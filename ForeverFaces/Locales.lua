@@ -24,6 +24,7 @@ local L = {
 	LANG_AUTO = "Auto",
 
 	MSG_WELCOME = "installed. Portraits now show living 3D models. Settings: type |cffebbd61/ff|r",
+	MSG_LOADED = "loaded. Settings: type |cffebbd61/ff|r",
 	MSG_ON = "on.",
 	MSG_OFF = "off, portraits are flat pictures again.",
 	MSG_RESET = "settings reset.",
