@@ -132,9 +132,12 @@ local function Layout(texture, e)
 		local fill = math.min(SIZE_MAX, math.max(SIZE_MIN, (DB().size or SIZE_DEFAULT) / 100))
 		model:SetPoint("CENTER", texture, "CENTER")
 		model:SetSize(d * fill, d * fill)
-		-- the fade picture is opaque from FADE_EDGE of its radius out; scale it
-		-- so that point lands on the model's edge
-		e.fade:SetSize(d * fill / FADE_EDGE, d * fill / FADE_EDGE)
+		-- The fade picture is opaque from FADE_EDGE of its radius out. It stays the
+		-- size of the portrait (a bigger picture runs past the game's mask, whose
+		-- edge pixels then smear outward as dark streaks) and is zoomed with
+		-- texture coordinates so its opaque edge lands on the model's edge.
+		local half = 0.5 * FADE_EDGE / fill
+		e.fade:SetTexCoord(0.5 - half, 0.5 + half, 0.5 - half, 0.5 + half)
 	else
 		model:SetAllPoints(texture)
 	end
@@ -163,7 +166,7 @@ local function Build(texture, e)
 	local cover = CreateFrame("Frame", nil, host)
 	cover:SetAllPoints(texture)
 	local fade = cover:CreateTexture(nil, "OVERLAY")
-	fade:SetPoint("CENTER", texture, "CENTER")
+	fade:SetAllPoints(texture)
 	fade:SetTexture(FADE)
 	fade:SetVertexColor(DARK[1], DARK[2], DARK[3], DARK[4])
 	cover:Hide()
