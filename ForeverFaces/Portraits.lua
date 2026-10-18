@@ -93,6 +93,16 @@ end
 local function Levels(texture, e)
 	local host = texture:GetParent()
 	local level = host:GetFrameLevel()
+	-- On a unit frame the level badge and the bars live in sibling frames of the
+	-- ring's frame, which may sit lower than it: slide under all of them.
+	local unitFrame = host:GetParent()
+	if unitFrame and e.unit and Category(e.unit) ~= "npc" then
+		for _, child in ipairs({ unitFrame:GetChildren() }) do
+			if not (child.IsForbidden and child:IsForbidden()) and child ~= e.back and child ~= e.model and child ~= e.cover then
+				level = math.min(level, child:GetFrameLevel())
+			end
+		end
+	end
 	if level >= 3 then
 		e.back:SetFrameLevel(level - 3)
 		e.model:SetFrameLevel(level - 2)
@@ -149,11 +159,23 @@ local function Build(texture, e)
 	fade:SetVertexColor(DARK[1], DARK[2], DARK[3], DARK[4])
 	cover:Hide()
 
+	-- the same shape the game cuts the portrait with: its own mask, copied
 	if e.round then
+		local own = texture.GetMaskTexture and texture:GetMaskTexture(1)
 		for _, region in ipairs({ disc, fade }) do
 			local mask = region:GetParent():CreateMaskTexture()
-			mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-			mask:SetAllPoints(texture)
+			local atlas = own and own.GetAtlas and own:GetAtlas()
+			if atlas then
+				mask:SetAtlas(atlas)
+			else
+				mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+			end
+			if own and own:GetNumPoints() > 0 then
+				for i = 1, own:GetNumPoints() do mask:SetPoint(own:GetPoint(i)) end
+				mask:SetSize(own:GetSize())
+			else
+				mask:SetAllPoints(texture)
+			end
 			region:AddMaskTexture(mask)
 		end
 	end
@@ -258,6 +280,41 @@ local function OnPortrait(texture, unit)
 	Refresh(texture)
 end
 ns.OnPortrait = OnPortrait
+
+-- /ff debug: the real numbers of every portrait, so the look can be tuned to
+-- the game's frames instead of guessed.
+function ns.Debug()
+	local function name(f) return f and (f.GetDebugName and f:GetDebugName() or f:GetName()) or "-" end
+	local function lvl(f) return f and (f:GetFrameStrata() .. " " .. f:GetFrameLevel()) or "-" end
+	local count = 0
+	for texture, e in pairs(entries) do
+		if e.unit and texture:IsVisible() then
+			count = count + 1
+			local w, h = texture:GetSize()
+			ns.Print(("%s [%s] %.1fx%.1f round=%s shown=%s"):format(name(texture), e.unit, w, h, tostring(e.round), tostring(e.shown)))
+			local own = texture.GetMaskTexture and texture:GetMaskTexture(1)
+			if own then
+				local mw, mh = own:GetSize()
+				ns.Print(("  mask %s %.1fx%.1f"):format(own.GetAtlas and own:GetAtlas() or "file", mw, mh))
+			end
+			local host = texture:GetParent()
+			local unitFrame = host:GetParent()
+			ns.Print(("  host %s %s, unit frame %s %s"):format(name(host), lvl(host), name(unitFrame), lvl(unitFrame)))
+			if unitFrame then
+				for _, child in ipairs({ unitFrame:GetChildren() }) do
+					if not (child.IsForbidden and child:IsForbidden()) then
+						ns.Print(("    sibling %s %s"):format(name(child), lvl(child)))
+					end
+				end
+			end
+			if e.model then
+				local mw = e.model:GetWidth()
+				ns.Print(("  ours: back %s, model %s (%.1f), cover %s"):format(lvl(e.back), lvl(e.model), mw, lvl(e.cover)))
+			end
+		end
+	end
+	if count == 0 then ns.Print("no 3D portraits on screen") end
+end
 
 function ns.ApplyAll()
 	for texture, e in pairs(entries) do
