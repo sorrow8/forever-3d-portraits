@@ -21,7 +21,11 @@ local ADDON, ns = ...
 -- Blizzard frames.
 
 local MIN_SIZE = 30     -- smaller portraits stay flat
-local SIZE_MIN, SIZE_MAX, SIZE_DEFAULT = 0.70, 0.85, 80 -- model size in a round portrait
+local SIZE_MIN, SIZE_MAX, SIZE_DEFAULT = 0.70, 0.85, 80 -- size of the face in a round portrait
+-- A model is a square that can't be cut round: one this big (of the circle's
+-- width) keeps its corners inside the circle. A bigger face is shown by
+-- bringing the camera closer, not by a bigger square.
+local SQUARE = 0.70
 local FADE_EDGE = 0.70  -- media/fade.tga is fully opaque from this share of its radius out
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
@@ -177,13 +181,17 @@ local function Layout(texture, e)
 		local fill = ns.Size() / 100
 		-- on top of a window's ring the model's corners must stay inside the circle
 		if not e.framed then fill = SIZE_MIN end
+		-- the square stays inside the circle; the camera comes closer for a bigger face
+		local square = math.min(fill, SQUARE)
+		e.camScale = square / fill
 		model:SetPoint("CENTER", texture, "CENTER")
-		model:SetSize(d * fill, d * fill)
+		model:SetSize(d * square, d * square)
+		model:SetCamDistanceScale(e.camScale)
 		-- The fade picture is opaque from FADE_EDGE of its radius out. It stays the
 		-- size of the portrait (a bigger picture runs past the game's mask, whose
 		-- edge pixels then smear outward as dark streaks) and is zoomed with
 		-- texture coordinates so its opaque edge lands on the model's edge.
-		local half = 0.5 * FADE_EDGE / fill
+		local half = 0.5 * FADE_EDGE / square
 		e.fade:SetTexCoord(0.5 - half, 0.5 + half, 0.5 - half, 0.5 + half)
 	else
 		model:SetAllPoints(texture)
@@ -274,7 +282,7 @@ local function Refresh(texture)
 		e.dirty = false
 		model:SetUnit(e.unit)
 		model:SetPortraitZoom(1)
-		model:SetCamDistanceScale(1)
+		model:SetCamDistanceScale(e.camScale or 1)
 		model:SetPosition(0, 0, 0)
 	end
 
