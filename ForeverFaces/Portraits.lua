@@ -86,23 +86,32 @@ local function Show3D(texture)
 	e.hiding = false
 end
 
--- The portrait's own frame holds the ring art. Our frames sit just below it,
--- so the ring is drawn over the model and hides its square corners:
---   back (dark disc) < model < cover (soft fade) < the frame with the ring.
--- A frame too low to fit three levels under it keeps everything on top.
+-- The portrait's own frame holds the ring art, and on a unit frame the level
+-- badge and the bars sit in sibling frames. Our frames go under all of that,
+-- so the ring and the badge are drawn over the model:
+--   back (dark disc) < model < cover (soft fade) < the unit frame's parts.
+-- A unit frame lives in its own strata (LOW); one strata down is under every
+-- part of it whatever their levels are (the player frame sits at level 1-2,
+-- with no room below). An NPC window keeps our frames on top of its portrait,
+-- one strata down would put them under the window's own background.
+local STRATA_BELOW = {
+	LOW = "BACKGROUND", MEDIUM = "LOW", HIGH = "MEDIUM", DIALOG = "HIGH",
+	FULLSCREEN = "DIALOG", FULLSCREEN_DIALOG = "FULLSCREEN", TOOLTIP = "FULLSCREEN_DIALOG",
+}
+
 local function Levels(texture, e)
 	local host = texture:GetParent()
-	local level = host:GetFrameLevel()
-	-- On a unit frame the level badge and the bars live in sibling frames of the
-	-- ring's frame, which may sit lower than it: slide under all of them.
-	local unitFrame = host:GetParent()
-	if unitFrame and e.unit and Category(e.unit) ~= "npc" then
-		for _, child in ipairs({ unitFrame:GetChildren() }) do
-			if not (child.IsForbidden and child:IsForbidden()) and child ~= e.back and child ~= e.model and child ~= e.cover then
-				level = math.min(level, child:GetFrameLevel())
-			end
-		end
+	local below = STRATA_BELOW[host:GetFrameStrata()]
+	if below and e.unit and Category(e.unit) ~= "npc" then
+		e.back:SetFrameStrata(below)
+		e.model:SetFrameStrata(below)
+		e.cover:SetFrameStrata(below)
+		e.back:SetFrameLevel(1)
+		e.model:SetFrameLevel(2)
+		e.cover:SetFrameLevel(3)
+		return
 	end
+	local level = host:GetFrameLevel()
 	if level >= 3 then
 		e.back:SetFrameLevel(level - 3)
 		e.model:SetFrameLevel(level - 2)
