@@ -19,12 +19,16 @@ local L = {
 	BACKGROUND = "Dark background",
 	BACKGROUND_HELP = "A dark circle behind the model, so it stands out from the frame.",
 
+	SIZE = "Portrait size",
+	SIZE_HELP = "How much of the round frame the model fills. Bigger shows more of the face, smaller leaves a wider soft edge.",
+	SIZE_PCT = "%d%%",
+
 	RESET = "Reset settings",
 	CMD_HINT = "Open this window:",
 	LANG_AUTO = "Auto",
 
 	MSG_WELCOME = "installed. Portraits now show living 3D models. Settings: type |cffebbd61/ff|r",
-	MSG_LOADED = "loaded. Settings: type |cffebbd61/ff|r",
+	MSG_LOADED = "loaded. Settings: |cffebbd61/ff|r",
 	MSG_ON = "on.",
 	MSG_OFF = "off, portraits are flat pictures again.",
 	MSG_RESET = "settings reset.",

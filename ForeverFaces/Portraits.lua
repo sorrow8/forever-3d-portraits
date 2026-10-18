@@ -8,10 +8,9 @@ local ADDON, ns = ...
 -- On Forever every portrait that matters is round: the unit frames, the party
 -- frames and the portrait of a quest, gossip, merchant or trainer window are
 -- all masked to a circle and framed by ring art. Models can't be masked: a
--- model is a square and would show a straight edge across the circle. So a
--- round portrait gets the model in the square that fits inside the circle, a
--- dark disc behind it and a soft dark fade over its edges (both textures,
--- which can be masked to the circle).
+-- model is a square and would show a straight edge across the circle. So the
+-- model is slid under the ring art (see Levels), has a dark disc behind it and
+-- a soft dark fade over its edges (textures, which can be masked to the circle).
 --
 -- The flat picture comes back whenever the model can't be shown: the unit is
 -- gone or out of sight, the model has not loaded, the game put a plain
@@ -20,13 +19,14 @@ local ADDON, ns = ...
 -- Blizzard frames.
 
 local MIN_SIZE = 30     -- smaller portraits stay flat
-local ROUND_FILL = 0.70 -- model size inside a round portrait: its corners stay inside the circle
+local SIZE_MIN, SIZE_MAX, SIZE_DEFAULT = 0.70, 0.90, 80 -- model size in a round portrait
+local FADE_EDGE = 0.70  -- media/fade.tga is fully opaque from this share of its radius out
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
 local DARK = { 0.04, 0.04, 0.06, 1 }
 local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
 
-local entries = {} -- [texture] = { unit, alpha, round, model, backdrop, cover, dirty, shown }
+local entries = {} -- [texture] = { unit, alpha, round, model, back, cover, fade, dirty, shown, hiding }
 local pending = {} -- [texture] = true, waiting for combat to end
 local hooked = {}
 
@@ -66,20 +66,42 @@ local function Flat(texture)
 	if e.model then
 		e.model:SetAlpha(0)
 		e.model:Hide()
-		e.backdrop:Hide()
-		if e.cover then e.cover:Hide() end
+		e.back:Hide()
+		e.cover:Hide()
 	end
 	e.shown = false
+	e.hiding = true
 	texture:SetAlpha(e.alpha)
+	e.hiding = false
 end
 
 local function Show3D(texture)
 	local e = entries[texture]
 	e.model:SetAlpha(1)
-	e.backdrop:SetShown(DB().background)
-	if e.cover then e.cover:SetShown(DB().background) end
-	texture:SetAlpha(0)
+	e.back:SetShown(DB().background)
+	e.cover:SetShown(e.round and DB().background)
 	e.shown = true
+	e.hiding = true
+	texture:SetAlpha(0)
+	e.hiding = false
+end
+
+-- The portrait's own frame holds the ring art. Our frames sit just below it,
+-- so the ring is drawn over the model and hides its square corners:
+--   back (dark disc) < model < cover (soft fade) < the frame with the ring.
+-- A frame too low to fit three levels under it keeps everything on top.
+local function Levels(texture, e)
+	local host = texture:GetParent()
+	local level = host:GetFrameLevel()
+	if level >= 3 then
+		e.back:SetFrameLevel(level - 3)
+		e.model:SetFrameLevel(level - 2)
+		e.cover:SetFrameLevel(level - 1)
+	else
+		e.back:SetFrameLevel(level + 1)
+		e.model:SetFrameLevel(level + 2)
+		e.cover:SetFrameLevel(level + 3)
+	end
 end
 
 local function Layout(texture, e)
@@ -87,17 +109,30 @@ local function Layout(texture, e)
 	model:ClearAllPoints()
 	if e.round then
 		local w, h = texture:GetSize()
-		local side = math.min(w, h) * ROUND_FILL
+		local d = math.min(w, h)
+		local fill = math.min(SIZE_MAX, math.max(SIZE_MIN, (DB().size or SIZE_DEFAULT) / 100))
 		model:SetPoint("CENTER", texture, "CENTER")
-		model:SetSize(side, side)
+		model:SetSize(d * fill, d * fill)
+		-- the fade picture is opaque from FADE_EDGE of its radius out; scale it
+		-- so that point lands on the model's edge
+		e.fade:SetSize(d * fill / FADE_EDGE, d * fill / FADE_EDGE)
 	else
 		model:SetAllPoints(texture)
 	end
+	Levels(texture, e)
 end
 
 local function Build(texture, e)
-	local parent = texture:GetParent()
-	local model = CreateFrame("PlayerModel", nil, parent)
+	local host = texture:GetParent()
+
+	local back = CreateFrame("Frame", nil, host)
+	back:SetAllPoints(texture)
+	local disc = back:CreateTexture(nil, "BACKGROUND")
+	disc:SetAllPoints()
+	disc:SetColorTexture(DARK[1], DARK[2], DARK[3], DARK[4])
+	back:Hide()
+
+	local model = CreateFrame("PlayerModel", nil, host)
 	model:SetAlpha(0)
 	model:Hide()
 	model:SetScript("OnModelLoaded", function()
@@ -105,34 +140,25 @@ local function Build(texture, e)
 		if entry and Wanted(texture, entry) then Show3D(texture) end
 	end)
 
-	local layer, sub = texture:GetDrawLayer()
-	local backdrop = parent:CreateTexture(nil, layer or "BACKGROUND", nil, sub or 0)
-	backdrop:SetAllPoints(texture)
-	backdrop:SetColorTexture(DARK[1], DARK[2], DARK[3], DARK[4])
-	backdrop:Hide()
-	if e.round then
-		local mask = parent:CreateMaskTexture()
-		mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-		mask:SetAllPoints(texture)
-		backdrop:AddMaskTexture(mask)
+	-- above the model: fades its square edges into the dark disc
+	local cover = CreateFrame("Frame", nil, host)
+	cover:SetAllPoints(texture)
+	local fade = cover:CreateTexture(nil, "OVERLAY")
+	fade:SetPoint("CENTER", texture, "CENTER")
+	fade:SetTexture(FADE)
+	fade:SetVertexColor(DARK[1], DARK[2], DARK[3], DARK[4])
+	cover:Hide()
 
-		-- above the model: fades its square edges into the dark disc
-		local cover = CreateFrame("Frame", nil, model)
-		cover:SetAllPoints(texture)
-		cover:SetFrameLevel(model:GetFrameLevel() + 1)
-		local fade = cover:CreateTexture(nil, "OVERLAY")
-		fade:SetAllPoints()
-		fade:SetTexture(FADE)
-		fade:SetVertexColor(DARK[1], DARK[2], DARK[3], DARK[4])
-		local coverMask = cover:CreateMaskTexture()
-		coverMask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-		coverMask:SetAllPoints(texture)
-		fade:AddMaskTexture(coverMask)
-		cover:Hide()
-		e.cover = cover
+	if e.round then
+		for _, region in ipairs({ disc, fade }) do
+			local mask = region:GetParent():CreateMaskTexture()
+			mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+			mask:SetAllPoints(texture)
+			region:AddMaskTexture(mask)
+		end
 	end
 
-	e.model, e.backdrop = model, backdrop
+	e.model, e.back, e.cover, e.fade = model, back, cover, fade
 end
 
 local function Refresh(texture)
@@ -194,6 +220,16 @@ local function Hook(texture)
 	end
 	hooksecurefunc(texture, "SetTexture", Picture)
 	hooksecurefunc(texture, "SetAtlas", Picture)
+
+	-- the game sets the portrait's alpha now and then; keep it hidden under a model
+	hooksecurefunc(texture, "SetAlpha", function()
+		local e = entries[texture]
+		if e and e.shown and not e.hiding then
+			e.hiding = true
+			texture:SetAlpha(0)
+			e.hiding = false
+		end
+	end)
 
 	local function Sync() Refresh(texture) end
 	hooksecurefunc(texture, "Show", Sync)

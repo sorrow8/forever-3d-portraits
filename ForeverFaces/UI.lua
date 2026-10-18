@@ -149,6 +149,75 @@ local function ToggleRow(parent, y, label, help, key)
 	return row, row:GetHeight()
 end
 
+-- Slider ---------------------------------------------------------------------
+
+local function Slider(parent, y, label, help, key, min, max, format)
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetPoint("TOPLEFT", PAD, y)
+	row:SetWidth(INNER)
+
+	row.label = Text(row, "GameFontHighlight", C.text, INNER - 90)
+	row.label:SetPoint("TOPLEFT")
+	row.label:SetText(label)
+
+	row.value = Text(row, "GameFontHighlight", C.accent)
+	row.value:SetPoint("TOPRIGHT")
+	row.value:SetJustifyH("RIGHT")
+
+	local s = CreateFrame("Slider", nil, row)
+	s:SetOrientation("HORIZONTAL")
+	s:SetSize(INNER, 16)
+	s:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", 0, -8)
+	s:SetMinMaxValues(min, max)
+	s:SetValueStep(1)
+	if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+	s:EnableMouseWheel(true)
+
+	s.track = Tex(s, C.raised, "BACKGROUND")
+	s.track:SetPoint("LEFT")
+	s.track:SetPoint("RIGHT")
+	s.track:SetHeight(4)
+	s.fill = Tex(s, C.accent, "ARTWORK")
+	s.fill:SetPoint("LEFT")
+	s.fill:SetHeight(4)
+	local thumb = s:CreateTexture(nil, "OVERLAY")
+	thumb:SetColorTexture(C.text[1], C.text[2], C.text[3], 1)
+	thumb:SetSize(8, 16)
+	s:SetThumbTexture(thumb)
+
+	local function Show(v)
+		row.value:SetText(format(v))
+		local frac = (max > min) and (v - min) / (max - min) or 0
+		s.fill:SetWidth(math.max(1, frac * (INNER - 8) + 4))
+	end
+
+	s:SetScript("OnValueChanged", function(_, v, userInput)
+		v = math.floor(v + 0.5)
+		Show(v)
+		if userInput then ns.Set(key, v) end
+	end)
+	s:SetScript("OnMouseWheel", function(self, delta)
+		local v = math.min(max, math.max(min, (ns.DB()[key] or min) + delta))
+		self:SetValue(v)
+		ns.Set(key, v)
+	end)
+
+	function row:SetNumber(v)
+		s:SetValue(v)
+		Show(v)
+	end
+	function row:SetActive(active)
+		self:SetAlpha(active and 1 or 0.4)
+		s:EnableMouse(active)
+		s:EnableMouseWheel(active)
+	end
+
+	local h = LINE + 8 + 16
+	row:SetHeight(h)
+	Tooltip(row, label, help)
+	return row, h
+end
+
 -- Text button ----------------------------------------------------------------
 
 local function TextButton(parent, label, onClick)
@@ -304,6 +373,8 @@ local function Refresh()
 		widgets[key].switch:SetChecked(db[key])
 		widgets[key]:SetActive(enabled)
 	end
+	widgets.size:SetNumber(db.size or 80)
+	widgets.size:SetActive(enabled)
 end
 ns.RefreshUI = Refresh
 
@@ -383,6 +454,12 @@ local function Build()
 	y = y - h - 18
 	row, h = ToggleRow(win, y, L.BACKGROUND, L.BACKGROUND_HELP, "background")
 	widgets.background = row
+	y = y - h - 16
+
+	-- limited to 70-90%: smaller looks lost in the ring, bigger shows the model's square edges
+	widgets.size, h = Slider(win, y, L.SIZE, L.SIZE_HELP, "size", 70, 90, function(v)
+		return L.SIZE_PCT:format(v)
+	end)
 	y = y - h - 18
 
 	-- Footer
