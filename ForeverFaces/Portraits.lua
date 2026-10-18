@@ -7,9 +7,11 @@ local ADDON, ns = ...
 --
 -- On Forever every portrait that matters is round: the unit frames, the party
 -- frames and the portrait of a quest, gossip, merchant or trainer window are
--- all masked to a circle and framed by ring art. Models can't be masked, so a
--- round portrait gets a slightly smaller model in its middle and a dark disc
--- behind it (a texture, which can be masked).
+-- all masked to a circle and framed by ring art. Models can't be masked: a
+-- model is a square and would show a straight edge across the circle. So a
+-- round portrait gets the model in the square that fits inside the circle, a
+-- dark disc behind it and a soft dark fade over its edges (both textures,
+-- which can be masked to the circle).
 --
 -- The flat picture comes back whenever the model can't be shown: the unit is
 -- gone or out of sight, the model has not loaded, the game put a plain
@@ -18,12 +20,13 @@ local ADDON, ns = ...
 -- Blizzard frames.
 
 local MIN_SIZE = 30     -- smaller portraits stay flat
-local ROUND_FILL = 0.85 -- model size inside a round portrait
+local ROUND_FILL = 0.70 -- model size inside a round portrait: its corners stay inside the circle
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
 local DARK = { 0.04, 0.04, 0.06, 1 }
 local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
 
-local entries = {} -- [texture] = { unit, alpha, round, model, backdrop, dirty, shown }
+local entries = {} -- [texture] = { unit, alpha, round, model, backdrop, cover, dirty, shown }
 local pending = {} -- [texture] = true, waiting for combat to end
 local hooked = {}
 
@@ -64,6 +67,7 @@ local function Flat(texture)
 		e.model:SetAlpha(0)
 		e.model:Hide()
 		e.backdrop:Hide()
+		if e.cover then e.cover:Hide() end
 	end
 	e.shown = false
 	texture:SetAlpha(e.alpha)
@@ -73,6 +77,7 @@ local function Show3D(texture)
 	local e = entries[texture]
 	e.model:SetAlpha(1)
 	e.backdrop:SetShown(DB().background)
+	if e.cover then e.cover:SetShown(DB().background) end
 	texture:SetAlpha(0)
 	e.shown = true
 end
@@ -110,6 +115,21 @@ local function Build(texture, e)
 		mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
 		mask:SetAllPoints(texture)
 		backdrop:AddMaskTexture(mask)
+
+		-- above the model: fades its square edges into the dark disc
+		local cover = CreateFrame("Frame", nil, model)
+		cover:SetAllPoints(texture)
+		cover:SetFrameLevel(model:GetFrameLevel() + 1)
+		local fade = cover:CreateTexture(nil, "OVERLAY")
+		fade:SetAllPoints()
+		fade:SetTexture(FADE)
+		fade:SetVertexColor(DARK[1], DARK[2], DARK[3], DARK[4])
+		local coverMask = cover:CreateMaskTexture()
+		coverMask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+		coverMask:SetAllPoints(texture)
+		fade:AddMaskTexture(coverMask)
+		cover:Hide()
+		e.cover = cover
 	end
 
 	e.model, e.backdrop = model, backdrop
@@ -184,6 +204,9 @@ end
 local function OnPortrait(texture, unit)
 	if type(texture) ~= "table" or type(unit) ~= "string" or not texture.GetObjectType then return end
 	if texture.IsForbidden and texture:IsForbidden() then return end
+	-- the character button of the game menu draws your portrait too; a model
+	-- there would not fade with a hidden menu bar
+	if CharacterMicroButton and texture == CharacterMicroButton.Portrait then return end
 	local e = entries[texture]
 	if not e then
 		if not BigEnough(texture) then return end
