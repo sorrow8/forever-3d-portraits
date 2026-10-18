@@ -456,8 +456,8 @@ local function Build()
 	widgets.background = row
 	y = y - h - 16
 
-	-- limited to 70-90%: smaller looks lost in the ring, bigger shows the model's square edges
-	widgets.size, h = Slider(win, y, L.SIZE, L.SIZE_HELP, "size", 70, 90, function(v)
+	-- limited to 70-85%: smaller looks lost in the ring, bigger lets the model's corners out of the ring
+	widgets.size, h = Slider(win, y, L.SIZE, L.SIZE_HELP, "size", 70, 85, function(v)
 		return L.SIZE_PCT:format(v)
 	end)
 	y = y - h - 18

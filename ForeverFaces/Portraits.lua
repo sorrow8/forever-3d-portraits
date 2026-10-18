@@ -19,7 +19,7 @@ local ADDON, ns = ...
 -- Blizzard frames.
 
 local MIN_SIZE = 30     -- smaller portraits stay flat
-local SIZE_MIN, SIZE_MAX, SIZE_DEFAULT = 0.70, 0.90, 80 -- model size in a round portrait
+local SIZE_MIN, SIZE_MAX, SIZE_DEFAULT = 0.70, 0.85, 80 -- model size in a round portrait
 local FADE_EDGE = 0.70  -- media/fade.tga is fully opaque from this share of its radius out
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"

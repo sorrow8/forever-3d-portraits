@@ -13,7 +13,7 @@ local DEFAULTS = {
 	party = true,
 	npc = true,        -- quest, gossip, merchant and trainer windows
 	background = true, -- dark circle behind the model
-	size = 80,         -- model size in a round portrait, percent (70-90)
+	size = 80,         -- model size in a round portrait, percent (70-85)
 }
 
 local PREFIX = "|cffebbd61Forever Faces|r: "
