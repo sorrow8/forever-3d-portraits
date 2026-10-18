@@ -22,10 +22,12 @@ local ADDON, ns = ...
 
 local MIN_SIZE = 30     -- smaller portraits stay flat
 local SIZE_MIN, SIZE_MAX, SIZE_DEFAULT = 0.70, 0.85, 80 -- size of the face in a round portrait
--- A model is a square that can't be cut round: one this big (of the circle's
--- width) keeps its corners inside the circle. A bigger face is shown by
--- bringing the camera closer, not by a bigger square.
-local SQUARE = 0.70
+-- A model is a square that can't be cut round: at this size (of the circle's
+-- width) its corners reach just under the ring art around the circle, not past
+-- it, and the dark edge between the model and the ring stays thin. A bigger
+-- face is shown by bringing the camera closer, not by a bigger square. On a
+-- window's portrait, which has no ring over it, the square stays at SIZE_MIN.
+local SQUARE = 0.80
 local FADE_EDGE = 0.70  -- media/fade.tga is fully opaque from this share of its radius out
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
@@ -182,7 +184,7 @@ local function Layout(texture, e)
 		-- on top of a window's ring the model's corners must stay inside the circle
 		if not e.framed then fill = SIZE_MIN end
 		-- the square stays inside the circle; the camera comes closer for a bigger face
-		local square = math.min(fill, SQUARE)
+		local square = math.min(fill, e.framed and SQUARE or SIZE_MIN)
 		e.camScale = square / fill
 		model:SetPoint("CENTER", texture, "CENTER")
 		model:SetSize(d * square, d * square)

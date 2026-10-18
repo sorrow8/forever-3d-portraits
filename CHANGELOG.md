@@ -1,6 +1,6 @@
 # 1.0.3
 
-- The model's square stays inside the round frame at every size, so no corner sticks out past the ring; a bigger face comes from bringing the camera closer.
+- The model's square never grows past 80% of the circle, where its corners stay under the ring art; a bigger face comes from bringing the camera closer, so no corner sticks out and the dark edge stays thin.
 - Unit frame portraits follow the game's own tint: when the game greys, blues (ghost), reddens (low health) or desaturates (offline) the picture, the flat picture shows so you see it; back to 3D when the tint goes.
 
 # 1.0.2
