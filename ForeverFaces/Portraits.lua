@@ -34,6 +34,25 @@ local hooked = {}
 
 local function DB() return ns.DB() end
 
+local function Secret(v)
+	return issecretvalue and issecretvalue(v)
+end
+
+-- A test on a unit that may come back secret: a secret answer counts as no.
+local function Is(fn, unit)
+	if not fn then return false end
+	local v = fn(unit)
+	if Secret(v) then return false end
+	return v and true or false
+end
+
+-- The game tints the flat picture for these (grey, blue, desaturated); a
+-- model would hide that, so the picture stays.
+local function Tinted(unit)
+	return Is(UnitIsDeadOrGhost, unit) or Is(UnitIsTapDenied, unit)
+		or (Is(UnitIsPlayer, unit) and UnitIsConnected and not Is(UnitIsConnected, unit))
+end
+
 local function Category(unit)
 	unit = unit:lower()
 	if unit == "npc" or unit == "questnpc" then return "npc" end
@@ -57,7 +76,7 @@ local function Wanted(texture, e)
 	if not db or not db.enabled or not e.unit then return false end
 	if not db[Category(e.unit)] then return false end
 	if not texture:IsShown() or not BigEnough(texture) then return false end
-	return UnitExists(e.unit) and UnitIsVisible(e.unit)
+	return UnitExists(e.unit) and UnitIsVisible(e.unit) and not Tinted(e.unit)
 end
 
 -- A unit frame (player, target, focus, pet, party ...) is a secure unit button
@@ -99,6 +118,7 @@ end
 
 local function Show3D(texture)
 	local e = entries[texture]
+	e.model:Show()
 	e.model:SetAlpha(1)
 	e.back:SetShown(DB().background)
 	e.cover:SetShown(e.round and DB().background)
@@ -122,8 +142,27 @@ local STRATA_BELOW = {
 	FULLSCREEN = "DIALOG", FULLSCREEN_DIALOG = "FULLSCREEN", TOOLTIP = "FULLSCREEN_DIALOG",
 }
 
+-- The party frames can have a background of their own (Edit Mode, "Show Party
+-- Frame Background") at level 1 of their strata: one strata down would put the
+-- models under it. While it shows, a party portrait stays in its strata, just
+-- under its frame, when the levels leave room above the background.
+local function PartyBackground()
+	local bg = PartyFrame and PartyFrame.Background
+	return bg and bg:IsShown() and bg or nil
+end
+
 local function Levels(texture, e)
 	local host = texture:GetParent()
+	local bg = e.framed and e.unit and Category(e.unit) == "party" and PartyBackground()
+	local level = host:GetFrameLevel()
+	if bg and level - 3 > bg:GetFrameLevel() then
+		local strata = host:GetFrameStrata()
+		for i, f in ipairs({ e.back, e.model, e.cover }) do
+			f:SetFrameStrata(strata)
+			f:SetFrameLevel(level - 4 + i)
+		end
+		return
+	end
 	local below = STRATA_BELOW[host:GetFrameStrata()]
 	if below and e.framed then
 		e.back:SetFrameStrata(below)
@@ -134,7 +173,6 @@ local function Levels(texture, e)
 		e.cover:SetFrameLevel(3)
 		return
 	end
-	local level = host:GetFrameLevel()
 	e.back:SetFrameLevel(level + 1)
 	e.model:SetFrameLevel(level + 2)
 	e.cover:SetFrameLevel(level + 3)
@@ -179,6 +217,12 @@ local function Build(texture, e)
 	model:SetScript("OnModelLoaded", function()
 		local entry = entries[texture]
 		if entry and Wanted(texture, entry) then Show3D(texture) end
+	end)
+	-- hidden (the target cleared, the frame closed): the unit may look different
+	-- by the time it is back, so its model is loaded again then
+	model:SetScript("OnHide", function()
+		local entry = entries[texture]
+		if entry then entry.dirty = true end
 	end)
 
 	-- above the model: fades its square edges into the dark disc
@@ -296,6 +340,9 @@ local function OnPortrait(texture, unit)
 	-- the character button of the game menu draws your portrait too; a model
 	-- there would not fade with a hidden menu bar
 	if CharacterMicroButton and texture == CharacterMicroButton.Portrait then return end
+	-- nor on the character window's tabs, which are buttons, not portraits
+	local tabs = CharacterFrame and CharacterFrame.ModeTabs and CharacterFrame.ModeTabs.CharacterTab
+	if (tabs and texture == tabs.Icon) or (PaperDollSidebarTab1 and texture == PaperDollSidebarTab1.Icon) then return end
 	local e = entries[texture]
 	if not e then
 		if not BigEnough(texture) then return end
@@ -311,6 +358,11 @@ local function OnPortrait(texture, unit)
 	-- Until the new one is there the game's fresh flat picture shows, not the
 	-- previous unit's model.
 	local guid = UnitGUID(unit)
+	-- a hidden identity can't be compared: load the model again to be safe
+	if Secret(guid) then
+		guid = nil
+		e.dirty = true
+	end
 	if e.unit ~= unit or e.guid ~= guid then
 		Flat(texture)
 		e.unit, e.guid = unit, guid
@@ -363,11 +415,33 @@ function ns.ApplyAll()
 end
 
 -- new gear or shape: load the model again; a portrait update needs no reload
+local function Same(a, b)
+	if a == b then return true end
+	local same = UnitIsUnit(a, b)
+	return not Secret(same) and same and true or false
+end
+
 local function UnitChanged(unit, reload)
+	if not unit then return end
 	for texture, e in pairs(entries) do
-		if e.unit and unit and UnitIsUnit(e.unit, unit) then
+		if e.unit and Same(e.unit, unit) then
 			if reload then e.dirty = true end
 			Refresh(texture)
+		end
+	end
+end
+
+-- Died, released, came back, went offline, got tapped: only a change of that
+-- look refreshes the portrait (health events come often).
+local function StateChanged(unit)
+	if not unit then return end
+	for texture, e in pairs(entries) do
+		if e.unit and Same(e.unit, unit) then
+			local tinted = Tinted(e.unit)
+			if tinted ~= e.tinted then
+				e.tinted = tinted
+				Refresh(texture)
+			end
 		end
 	end
 end
@@ -375,12 +449,24 @@ end
 function ns.InitPortraits()
 	hooksecurefunc("SetPortraitTexture", OnPortrait)
 
+	-- the party background switched on or off: party portraits change layers
+	local bg = PartyFrame and PartyFrame.Background
+	if bg then
+		bg:HookScript("OnShow", ns.ApplyAll)
+		bg:HookScript("OnHide", ns.ApplyAll)
+	end
+
 	local watcher = CreateFrame("Frame")
 	watcher:RegisterEvent("UNIT_MODEL_CHANGED")
 	watcher:RegisterEvent("UNIT_PORTRAIT_UPDATE")
 	watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
+	for _, event in ipairs({ "UNIT_HEALTH", "UNIT_FLAGS", "UNIT_CONNECTION" }) do
+		watcher:RegisterEvent(event)
+	end
 	watcher:SetScript("OnEvent", function(_, event, unit)
-		if event == "PLAYER_REGEN_ENABLED" then
+		if event == "UNIT_HEALTH" or event == "UNIT_FLAGS" or event == "UNIT_CONNECTION" then
+			StateChanged(unit)
+		elseif event == "PLAYER_REGEN_ENABLED" then
 			for texture in pairs(pending) do
 				pending[texture] = nil
 				Refresh(texture)

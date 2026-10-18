@@ -6,13 +6,13 @@ Living 3D portraits for **World of Warcraft: Forever**. Your unit frame, your ta
 
 - Player, target, focus, pet and target of target
 - Party frames
-- Quest, gossip, merchant and trainer windows
+- Quest, gossip, merchant, trainer, bank, tabard and guild registrar windows, and your trade partner
 - The model sits inside the round frame, under the ring and the level badge
 - Portrait size and a dark background, all applied at once
-- Falls back to the usual picture when a unit is out of sight
+- Falls back to the usual picture when a unit is out of sight, dead, offline or tapped by someone else
 - Settings: `/ff`
 
-**Install:** unzip the `ForeverFaces` folder into `World of Warcraft/_forever_/Interface/AddOns/` and restart the game.
+**Install:** unzip the `ForeverFaces` folder into `World of Warcraft/_forever_/Interface/AddOns/` and `/reload` or restart the game.
 
 MIT license.
 

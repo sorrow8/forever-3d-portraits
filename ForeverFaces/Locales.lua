@@ -15,7 +15,7 @@ local L = {
 	PARTY = "Party frames",
 	PARTY_HELP = "The portraits of your party members.",
 	NPC = "NPC windows",
-	NPC_HELP = "Quest givers, gossip, merchants and trainers you talk to.",
+	NPC_HELP = "Quest givers, gossip, merchants, trainers, the bank, the tabard and guild registrar windows, and your trade partner.",
 	BACKGROUND = "Dark background",
 	BACKGROUND_HELP = "A dark circle behind the model, so it stands out from the frame.",
 
