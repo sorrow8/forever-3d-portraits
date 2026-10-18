@@ -1,3 +1,7 @@
+# 1.0.3
+
+- Unit frame portraits follow the game's own tint: when the game greys, blues (ghost), reddens (low health) or desaturates (offline) the picture, the flat picture shows so you see it; back to 3D when the tint goes.
+
 # 1.0.2
 
 - Fix: a model the game had cached could fire its loaded event while being shown and loop until a "C stack overflow" error.

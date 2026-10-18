@@ -77,7 +77,9 @@ local function Wanted(texture, e)
 	if not db or not db.enabled or not e.unit then return false end
 	if not db[Category(e.unit)] then return false end
 	if not texture:IsShown() or not BigEnough(texture) then return false end
-	e.tinted = Tinted(e.unit)
+	-- the game's own tint on the picture (grey dead, blue ghost, red low health,
+	-- desaturated offline) or a state the game leaves untinted (a dead mob)
+	e.tinted = e.gameTint or Tinted(e.unit)
 	return UnitExists(e.unit) and UnitIsVisible(e.unit) and not e.tinted
 end
 
@@ -316,6 +318,31 @@ local function Hook(texture)
 		end
 	end)
 
+	-- the game tints the picture to show a state; the flat picture then shows it
+	local function Tint()
+		local e = entries[texture]
+		-- only unit frames tint their portrait to show a state
+		if not e or not e.framed then return end
+		local tinted = false
+		if texture.IsDesaturated then
+			local d = texture:IsDesaturated()
+			if not Secret(d) and d then tinted = true end
+		end
+		if not tinted and texture.GetVertexColor then
+			local r, g, b = texture:GetVertexColor()
+			if not (Secret(r) or Secret(g) or Secret(b)) and r and g and b then
+				tinted = r < 0.99 or g < 0.99 or b < 0.99
+			end
+		end
+		if tinted ~= (e.gameTint or false) then
+			e.gameTint = tinted
+			Refresh(texture)
+		end
+	end
+	hooksecurefunc(texture, "SetVertexColor", Tint)
+	if texture.SetDesaturated then hooksecurefunc(texture, "SetDesaturated", Tint) end
+	if texture.SetDesaturation then hooksecurefunc(texture, "SetDesaturation", Tint) end
+
 	local function Sync() Refresh(texture) end
 	hooksecurefunc(texture, "Show", Sync)
 	hooksecurefunc(texture, "Hide", Sync)
@@ -436,7 +463,7 @@ local function StateChanged(unit)
 	if not unit then return end
 	for texture, e in pairs(entries) do
 		if e.unit and texture:IsVisible() and Same(e.unit, unit) then
-			local tinted = Tinted(e.unit)
+			local tinted = e.gameTint or Tinted(e.unit)
 			if tinted ~= e.tinted then
 				e.tinted = tinted
 				Refresh(texture)
