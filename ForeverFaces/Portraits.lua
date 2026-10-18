@@ -28,7 +28,8 @@ local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
 local DARK = { 0.04, 0.04, 0.06, 1 }
 local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
 
-local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, dirty, shown, hiding }
+local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, dirty, shown, hiding, tinted }
+local Swapped -- defined with the events below
 local pending = {} -- [texture] = true, waiting for combat to end
 local hooked = {}
 
@@ -76,7 +77,8 @@ local function Wanted(texture, e)
 	if not db or not db.enabled or not e.unit then return false end
 	if not db[Category(e.unit)] then return false end
 	if not texture:IsShown() or not BigEnough(texture) then return false end
-	return UnitExists(e.unit) and UnitIsVisible(e.unit) and not Tinted(e.unit)
+	e.tinted = Tinted(e.unit)
+	return UnitExists(e.unit) and UnitIsVisible(e.unit) and not e.tinted
 end
 
 -- A unit frame (player, target, focus, pet, party ...) is a secure unit button
@@ -118,7 +120,11 @@ end
 
 local function Show3D(texture)
 	local e = entries[texture]
-	e.model:Show()
+	if e.showing then return end
+	-- showing a model can fire its OnModelLoaded at once, which comes back here
+	e.showing = true
+	if not e.model:IsShown() then e.model:Show() end
+	e.showing = false
 	e.model:SetAlpha(1)
 	e.back:SetShown(DB().background)
 	e.cover:SetShown(e.round and DB().background)
@@ -142,27 +148,9 @@ local STRATA_BELOW = {
 	FULLSCREEN = "DIALOG", FULLSCREEN_DIALOG = "FULLSCREEN", TOOLTIP = "FULLSCREEN_DIALOG",
 }
 
--- The party frames can have a background of their own (Edit Mode, "Show Party
--- Frame Background") at level 1 of their strata: one strata down would put the
--- models under it. While it shows, a party portrait stays in its strata, just
--- under its frame, when the levels leave room above the background.
-local function PartyBackground()
-	local bg = PartyFrame and PartyFrame.Background
-	return bg and bg:IsShown() and bg or nil
-end
-
 local function Levels(texture, e)
 	local host = texture:GetParent()
-	local bg = e.framed and e.unit and Category(e.unit) == "party" and PartyBackground()
 	local level = host:GetFrameLevel()
-	if bg and level - 3 > bg:GetFrameLevel() then
-		local strata = host:GetFrameStrata()
-		for i, f in ipairs({ e.back, e.model, e.cover }) do
-			f:SetFrameStrata(strata)
-			f:SetFrameLevel(level - 4 + i)
-		end
-		return
-	end
 	local below = STRATA_BELOW[host:GetFrameStrata()]
 	if below and e.framed then
 		e.back:SetFrameStrata(below)
@@ -340,9 +328,10 @@ local function OnPortrait(texture, unit)
 	-- the character button of the game menu draws your portrait too; a model
 	-- there would not fade with a hidden menu bar
 	if CharacterMicroButton and texture == CharacterMicroButton.Portrait then return end
-	-- nor on the character window's tabs, which are buttons, not portraits
-	local tabs = CharacterFrame and CharacterFrame.ModeTabs and CharacterFrame.ModeTabs.CharacterTab
-	if (tabs and texture == tabs.Icon) or (PaperDollSidebarTab1 and texture == PaperDollSidebarTab1.Icon) then return end
+	-- nor on the side tabs of the character and inspect windows, which are buttons
+	local parent = texture:GetParent()
+	if parent and parent.InitializeIconAnchoring then return end
+	if PaperDollSidebarTab1 and texture == PaperDollSidebarTab1.Icon then return end
 	local e = entries[texture]
 	if not e then
 		if not BigEnough(texture) then return end
@@ -358,11 +347,9 @@ local function OnPortrait(texture, unit)
 	-- Until the new one is there the game's fresh flat picture shows, not the
 	-- previous unit's model.
 	local guid = UnitGUID(unit)
-	-- a hidden identity can't be compared: load the model again to be safe
-	if Secret(guid) then
-		guid = nil
-		e.dirty = true
-	end
+	-- a hidden identity can't be compared; a new unit is then told by the
+	-- target / focus / group events instead (see Swapped)
+	if Secret(guid) then guid = nil end
 	if e.unit ~= unit or e.guid ~= guid then
 		Flat(texture)
 		e.unit, e.guid = unit, guid
@@ -407,7 +394,7 @@ function ns.Debug()
 	if count == 0 then ns.Print("no 3D portraits on screen") end
 end
 
--- settings only change the look, the loaded models stay
+-- settings change the look; a part switched off and on again loads its models anew
 function ns.ApplyAll()
 	for texture in pairs(entries) do
 		Refresh(texture)
@@ -431,12 +418,24 @@ local function UnitChanged(unit, reload)
 	end
 end
 
+-- Another unit on a portrait whose identity is hidden (no GUID to compare):
+-- the flat picture first, then the new model.
+Swapped = function(pattern)
+	for texture, e in pairs(entries) do
+		if e.unit and e.guid == nil and e.unit:find(pattern) then
+			Flat(texture)
+			e.dirty = true
+			Refresh(texture)
+		end
+	end
+end
+
 -- Died, released, came back, went offline, got tapped: only a change of that
 -- look refreshes the portrait (health events come often).
 local function StateChanged(unit)
 	if not unit then return end
 	for texture, e in pairs(entries) do
-		if e.unit and Same(e.unit, unit) then
+		if e.unit and texture:IsVisible() and Same(e.unit, unit) then
 			local tinted = Tinted(e.unit)
 			if tinted ~= e.tinted then
 				e.tinted = tinted
@@ -449,23 +448,43 @@ end
 function ns.InitPortraits()
 	hooksecurefunc("SetPortraitTexture", OnPortrait)
 
-	-- the party background switched on or off: party portraits change layers
+	-- The Edit Mode party background sits at level 1 of the party frames'
+	-- strata, where the models (one strata down) would be under it. It is a
+	-- plain backdrop, so it moves to the bottom instead, after the game has
+	-- placed it each time it shows.
 	local bg = PartyFrame and PartyFrame.Background
-	if bg then
-		bg:HookScript("OnShow", ns.ApplyAll)
-		bg:HookScript("OnHide", ns.ApplyAll)
+	if bg and not (bg.IsProtected and bg:IsProtected()) then
+		bg:HookScript("OnShow", function(self)
+			self:SetFrameStrata("BACKGROUND")
+			self:SetFrameLevel(0)
+		end)
+		if bg:IsShown() then
+			bg:SetFrameStrata("BACKGROUND")
+			bg:SetFrameLevel(0)
+		end
 	end
 
 	local watcher = CreateFrame("Frame")
 	watcher:RegisterEvent("UNIT_MODEL_CHANGED")
 	watcher:RegisterEvent("UNIT_PORTRAIT_UPDATE")
 	watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
-	for _, event in ipairs({ "UNIT_HEALTH", "UNIT_FLAGS", "UNIT_CONNECTION" }) do
+	for _, event in ipairs({ "UNIT_HEALTH", "UNIT_FLAGS", "UNIT_CONNECTION", "UNIT_FACTION",
+		"PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "UNIT_TARGET", "UNIT_PET", "GROUP_ROSTER_UPDATE" }) do
 		watcher:RegisterEvent(event)
 	end
 	watcher:SetScript("OnEvent", function(_, event, unit)
-		if event == "UNIT_HEALTH" or event == "UNIT_FLAGS" or event == "UNIT_CONNECTION" then
+		if event == "UNIT_HEALTH" or event == "UNIT_FLAGS" or event == "UNIT_CONNECTION" or event == "UNIT_FACTION" then
 			StateChanged(unit)
+		elseif event == "PLAYER_TARGET_CHANGED" then
+			Swapped("^target")
+		elseif event == "PLAYER_FOCUS_CHANGED" then
+			Swapped("^focus")
+		elseif event == "UNIT_TARGET" then
+			if unit == "target" then Swapped("^targettarget$") end
+		elseif event == "UNIT_PET" then
+			if unit == "player" then Swapped("^pet$") end
+		elseif event == "GROUP_ROSTER_UPDATE" then
+			Swapped("^party")
 		elseif event == "PLAYER_REGEN_ENABLED" then
 			for texture in pairs(pending) do
 				pending[texture] = nil

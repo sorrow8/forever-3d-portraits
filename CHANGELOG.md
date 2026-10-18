@@ -1,11 +1,15 @@
 # 1.0.2
 
-- Dead, released, offline and tapped units show the game's own tinted picture instead of a full-colour model.
+- Fix: a model the game had cached could fire its loaded event while being shown and loop until a "C stack overflow" error.
+- Dead, released, offline and tapped units show the game's own picture instead of a full-colour model (the game tints it grey where it does so on its own); a new unit on the same frame is checked afresh.
 - A unit that comes back after its frame was hidden (target cleared, then targeted again) gets its model loaded again, so a new look or shape shows.
 - A model that finishes loading after the unit came back into sight is shown, not left blank.
-- With the Edit Mode party background on, party portraits stay above it.
+- With the Edit Mode party background on, party portraits stay above it: the background moves to the bottom layer.
+- Where the game hides a unit's identity, a model is not reloaded on every redraw; a new target, focus, pet or party member is noticed from the game's events and shows the flat picture until its model is there.
+- Tapping by someone else is noticed at once.
+- Health and state events only check portraits that are on screen.
 - Where the game hides a unit's identity from addons, portraits no longer risk a Lua error.
-- The character window's tabs keep their icons instead of getting a model.
+- The side tabs of the character and inspect windows keep their icons instead of getting a model.
 - The NPC windows help and the README list every window that gets a model.
 
 # 1.0.1
