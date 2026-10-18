@@ -20,14 +20,13 @@ ns.LOCALES.ruRU = {
 
 	RESET = "Сбросить настройки",
 	CMD_HINT = "Открыть это окно:",
-	LANG_AUTO = "Авто",
 
 	MSG_WELCOME = "установлен. Портреты теперь живые 3D-модели. Настройки: набери |cffebbd61/ff|r",
 	MSG_LOADED = "загружен. Настройки: |cffebbd61/ff|r",
 	MSG_ON = "включён.",
 	MSG_OFF = "выключен, портреты снова плоские.",
 	MSG_RESET = "настройки сброшены.",
-	MSG_HELP = "/ff: окно, /ff on, /ff off, /ff reset, /ff lang auto/en/ru",
+	MSG_HELP = "/ff: окно, /ff on, /ff off, /ff toggle, /ff reset, /ff debug, /ff lang auto/en/ru",
 
 	OPTIONS_OPEN = "Открыть окно настроек",
 	OPTIONS_TEXT = "Все настройки находятся в собственном окне аддона.",

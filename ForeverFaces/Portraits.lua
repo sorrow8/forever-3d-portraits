@@ -9,8 +9,10 @@ local ADDON, ns = ...
 -- frames and the portrait of a quest, gossip, merchant or trainer window are
 -- all masked to a circle and framed by ring art. Models can't be masked: a
 -- model is a square and would show a straight edge across the circle. So the
--- model is slid under the ring art (see Levels), has a dark disc behind it and
--- a soft dark fade over its edges (textures, which can be masked to the circle).
+-- model gets a dark disc behind it and a soft dark fade over its edges
+-- (textures, which can be masked to the circle). On a unit frame it is also
+-- slid under the ring art (see Levels); in a window it stays small enough for
+-- its corners to stay inside the circle.
 --
 -- The flat picture comes back whenever the model can't be shown: the unit is
 -- gone or out of sight, the model has not loaded, the game put a plain
@@ -26,7 +28,7 @@ local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
 local DARK = { 0.04, 0.04, 0.06, 1 }
 local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
 
-local entries = {} -- [texture] = { unit, alpha, round, model, back, cover, fade, dirty, shown, hiding }
+local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, dirty, shown, hiding }
 local pending = {} -- [texture] = true, waiting for combat to end
 local hooked = {}
 
@@ -37,6 +39,12 @@ local function Category(unit)
 	if unit == "npc" or unit == "questnpc" then return "npc" end
 	if unit:find("^party") or unit:find("^raid") then return "party" end
 	return "units"
+end
+
+-- the saved portrait size, kept inside the range that looks right
+function ns.Size()
+	local size = tonumber(DB().size) or SIZE_DEFAULT
+	return math.min(SIZE_MAX * 100, math.max(SIZE_MIN * 100, size))
 end
 
 local function BigEnough(texture)
@@ -50,6 +58,20 @@ local function Wanted(texture, e)
 	if not db[Category(e.unit)] then return false end
 	if not texture:IsShown() or not BigEnough(texture) then return false end
 	return UnitExists(e.unit) and UnitIsVisible(e.unit)
+end
+
+-- A unit frame (player, target, focus, pet, party ...) is a secure unit button
+-- that carries a "unit" attribute; its portrait sits one or two frames below
+-- it. Windows that also draw a unit's portrait (character, talents, inspect,
+-- NPC dialogues) have no such attribute.
+local function OnUnitFrame(texture)
+	local frame = texture:GetParent()
+	for _ = 1, 3 do
+		if not frame or (frame.IsForbidden and frame:IsForbidden()) then return false end
+		if frame.GetAttribute and frame:GetAttribute("unit") then return true end
+		frame = frame:GetParent()
+	end
+	return false
 end
 
 local function Loaded(model)
@@ -92,8 +114,9 @@ end
 --   back (dark disc) < model < cover (soft fade) < the unit frame's parts.
 -- A unit frame lives in its own strata (LOW); one strata down is under every
 -- part of it whatever their levels are (the player frame sits at level 1-2,
--- with no room below). An NPC window keeps our frames on top of its portrait,
--- one strata down would put them under the window's own background.
+-- with no room below). A window (character, talents, NPC dialogues) keeps our
+-- frames on top of its portrait: one strata down would put them under the
+-- window's own background.
 local STRATA_BELOW = {
 	LOW = "BACKGROUND", MEDIUM = "LOW", HIGH = "MEDIUM", DIALOG = "HIGH",
 	FULLSCREEN = "DIALOG", FULLSCREEN_DIALOG = "FULLSCREEN", TOOLTIP = "FULLSCREEN_DIALOG",
@@ -102,7 +125,7 @@ local STRATA_BELOW = {
 local function Levels(texture, e)
 	local host = texture:GetParent()
 	local below = STRATA_BELOW[host:GetFrameStrata()]
-	if below and e.unit and Category(e.unit) ~= "npc" then
+	if below and e.framed then
 		e.back:SetFrameStrata(below)
 		e.model:SetFrameStrata(below)
 		e.cover:SetFrameStrata(below)
@@ -112,15 +135,9 @@ local function Levels(texture, e)
 		return
 	end
 	local level = host:GetFrameLevel()
-	if level >= 3 then
-		e.back:SetFrameLevel(level - 3)
-		e.model:SetFrameLevel(level - 2)
-		e.cover:SetFrameLevel(level - 1)
-	else
-		e.back:SetFrameLevel(level + 1)
-		e.model:SetFrameLevel(level + 2)
-		e.cover:SetFrameLevel(level + 3)
-	end
+	e.back:SetFrameLevel(level + 1)
+	e.model:SetFrameLevel(level + 2)
+	e.cover:SetFrameLevel(level + 3)
 end
 
 local function Layout(texture, e)
@@ -129,7 +146,9 @@ local function Layout(texture, e)
 	if e.round then
 		local w, h = texture:GetSize()
 		local d = math.min(w, h)
-		local fill = math.min(SIZE_MAX, math.max(SIZE_MIN, (DB().size or SIZE_DEFAULT) / 100))
+		local fill = ns.Size() / 100
+		-- on top of a window's ring the model's corners must stay inside the circle
+		if not e.framed then fill = SIZE_MIN end
 		model:SetPoint("CENTER", texture, "CENTER")
 		model:SetSize(d * fill, d * fill)
 		-- The fade picture is opaque from FADE_EDGE of its radius out. It stays the
@@ -283,12 +302,20 @@ local function OnPortrait(texture, unit)
 		e = {
 			alpha = texture:GetAlpha(),
 			round = (texture.GetNumMaskTextures and texture:GetNumMaskTextures() or 0) > 0,
+			framed = OnUnitFrame(texture),
 		}
 		entries[texture] = e
 		Hook(texture)
 	end
-	e.unit = unit
-	e.dirty = true
+	-- the game redraws portraits all the time; load a model only for a new unit.
+	-- Until the new one is there the game's fresh flat picture shows, not the
+	-- previous unit's model.
+	local guid = UnitGUID(unit)
+	if e.unit ~= unit or e.guid ~= guid then
+		Flat(texture)
+		e.unit, e.guid = unit, guid
+		e.dirty = true
+	end
 	Refresh(texture)
 end
 ns.OnPortrait = OnPortrait
@@ -328,17 +355,18 @@ function ns.Debug()
 	if count == 0 then ns.Print("no 3D portraits on screen") end
 end
 
+-- settings only change the look, the loaded models stay
 function ns.ApplyAll()
-	for texture, e in pairs(entries) do
-		e.dirty = true
+	for texture in pairs(entries) do
 		Refresh(texture)
 	end
 end
 
-local function UnitChanged(unit)
+-- new gear or shape: load the model again; a portrait update needs no reload
+local function UnitChanged(unit, reload)
 	for texture, e in pairs(entries) do
 		if e.unit and unit and UnitIsUnit(e.unit, unit) then
-			e.dirty = true
+			if reload then e.dirty = true end
 			Refresh(texture)
 		end
 	end
@@ -358,7 +386,7 @@ function ns.InitPortraits()
 				Refresh(texture)
 			end
 		else
-			UnitChanged(unit)
+			UnitChanged(unit, event == "UNIT_MODEL_CHANGED")
 		end
 	end)
 end

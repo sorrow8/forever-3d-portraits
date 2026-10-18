@@ -25,14 +25,13 @@ local L = {
 
 	RESET = "Reset settings",
 	CMD_HINT = "Open this window:",
-	LANG_AUTO = "Auto",
 
 	MSG_WELCOME = "installed. Portraits now show living 3D models. Settings: type |cffebbd61/ff|r",
 	MSG_LOADED = "loaded. Settings: |cffebbd61/ff|r",
 	MSG_ON = "on.",
 	MSG_OFF = "off, portraits are flat pictures again.",
 	MSG_RESET = "settings reset.",
-	MSG_HELP = "/ff: window, /ff on, /ff off, /ff reset, /ff lang auto/en/ru",
+	MSG_HELP = "/ff: window, /ff on, /ff off, /ff toggle, /ff reset, /ff debug, /ff lang auto/en/ru",
 
 	OPTIONS_OPEN = "Open the settings window",
 	OPTIONS_TEXT = "Every setting lives in the addon's own window.",

@@ -373,7 +373,7 @@ local function Refresh()
 		widgets[key].switch:SetChecked(db[key])
 		widgets[key]:SetActive(enabled)
 	end
-	widgets.size:SetNumber(db.size or 80)
+	widgets.size:SetNumber(ns.Size())
 	widgets.size:SetActive(enabled)
 end
 ns.RefreshUI = Refresh
@@ -506,9 +506,20 @@ function ns.ToggleWindow()
 	if win:IsShown() then win:Hide() else win:Show() end
 end
 
+local options = {} -- the game's Options page: title, text, button
+
+local function RelabelOptions()
+	if not options.title then return end
+	options.title:SetText(L.TITLE)
+	options.text:SetText(L.OPTIONS_TEXT)
+	options.button.text:SetText(L.OPTIONS_OPEN)
+	options.button:SetWidth(options.button.text:GetStringWidth() + 28)
+end
+
 -- After a language change: drop the old window and build it again in the
 -- new language, at the same place and with the same visibility.
 function ns.RebuildWindow()
+	RelabelOptions()
 	if not win then return end
 	local shown = win:IsShown()
 	win:Hide()
@@ -532,6 +543,7 @@ local function RegisterOptions()
 		if not win or not win:IsShown() then ns.ToggleWindow() end
 	end)
 	button:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -14)
+	options.title, options.text, options.button = title, text, button
 	local category = Settings.RegisterCanvasLayoutCategory(panel, L.TITLE)
 	Settings.RegisterAddOnCategory(category)
 end
