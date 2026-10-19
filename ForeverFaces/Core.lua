@@ -1,7 +1,7 @@
 local ADDON, ns = ...
 local L = ns.L
 
--- Forever Faces: living 3D portraits instead of flat pictures.
+-- Forever 3D Portraits: living 3D portraits instead of flat pictures.
 --
 -- The models themselves live in Portraits.lua. This file keeps the settings,
 -- answers the slash command and tells the portraits and the window when
@@ -14,9 +14,11 @@ local DEFAULTS = {
 	npc = true,        -- quest, gossip, merchant and trainer windows
 	background = true, -- dark circle behind the model
 	size = 80,         -- model size in a round portrait, percent (70-85)
+	minimapShow = true,
+	minimapAngle = 180,
 }
 
-local PREFIX = "|cffebbd61Forever Faces|r: "
+local PREFIX = "|cffebbd61Forever 3D Portraits|r: "
 
 local db
 local listeners = {}

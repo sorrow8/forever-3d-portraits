@@ -1,16 +1,21 @@
 ## Interface: 16001
-## Title: Forever Faces
+## Title: Forever 3D Portraits
 ## Notes: Living 3D portraits for your unit frames, your party and the NPCs you talk to. Settings window: /ff
 ## Notes-ruRU: Живые 3D-портреты для рамок персонажа, цели, группы и NPC, с которыми говоришь. Окно настроек: /ff
 ## Author: sorrow8
-## Version: 1.0.3
+## Version: 1.0.4
 ## SavedVariables: ForeverFacesDB
 ## IconTexture: Interface\Icons\INV_Misc_Head_Human_01
 ## AddonCompartmentFunc: ForeverFaces_OnCompartmentClick
 ## Category: Unit Frames
 
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 Locales.lua
 Locales\ruRU.lua
 Core.lua
 Portraits.lua
 UI.lua
+Minimap.lua

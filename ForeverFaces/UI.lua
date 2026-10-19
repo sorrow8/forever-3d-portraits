@@ -373,6 +373,7 @@ local function Refresh()
 		widgets[key].switch:SetChecked(db[key])
 		widgets[key]:SetActive(enabled)
 	end
+	widgets.minimap.switch:SetChecked(db.minimapShow)
 	widgets.size:SetNumber(ns.Size())
 	widgets.size:SetActive(enabled)
 end
@@ -454,6 +455,9 @@ local function Build()
 	y = y - h - 18
 	row, h = ToggleRow(win, y, L.BACKGROUND, L.BACKGROUND_HELP, "background")
 	widgets.background = row
+	y = y - h - 10
+	row, h = ToggleRow(win, y, L.MINIMAP, L.MINIMAP_HELP, "minimapShow")
+	widgets.minimap = row
 	y = y - h - 16
 
 	-- limited to 70-85%: smaller looks lost in the ring, bigger lets the model's corners out of the ring
@@ -551,4 +555,8 @@ end
 function ns.InitUI()
 	pcall(RegisterOptions)
 	ns.OnChange(Refresh)
+	if ns.UpdateMinimapButton then
+		ns.OnChange(ns.UpdateMinimapButton)
+		ns.UpdateMinimapButton()
+	end
 end

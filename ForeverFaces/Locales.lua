@@ -4,7 +4,7 @@ local _, ns = ...
 -- translates. The game's language is used unless one is picked in the
 -- window's language menu or with /ff lang.
 local L = {
-	TITLE = "Forever Faces",
+	TITLE = "Forever 3D Portraits",
 
 	ENABLED = "Addon enabled",
 	ENABLED_HELP = "Off: every portrait is a flat picture again.",
@@ -35,6 +35,11 @@ local L = {
 
 	OPTIONS_OPEN = "Open the settings window",
 	OPTIONS_TEXT = "Every setting lives in the addon's own window.",
+
+	MINIMAP = "Minimap button",
+	MINIMAP_HELP = "Show the addon's button at the edge of the minimap.",
+	MM_LEFT = "Left-click: settings",
+	MM_RIGHT = "Right-click: turn on or off",
 }
 
 ns.LOCALES = {}

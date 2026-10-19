@@ -1,3 +1,8 @@
+# 1.0.4
+
+- Renamed to Forever 3D Portraits. The folder and /ff stay the same, so your settings stay too.
+- Minimap button: left-click opens the settings, right-click turns the addon on or off, and a switch in the window hides it. It's made with LibDBIcon, so minimap button collectors (like Leatrix Plus) take it in with its own tooltip.
+
 # 1.0.3
 
 - The model's square never grows past 80% of the circle, where its corners stay under the ring art; a bigger face comes from bringing the camera closer, so no corner sticks out and the dark edge stays thin.
