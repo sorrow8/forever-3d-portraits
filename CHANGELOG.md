@@ -1,3 +1,12 @@
+# 1.0.5
+
+- The minimap button stays where a minimap button collector (like Leatrix Plus) put it: it was put back on the minimap's edge at every fight.
+- The target of target portrait, which the game redraws every frame, no longer does its layout work every frame.
+- A unit whose identity the game hides keeps the flat picture instead of showing the previous unit's model; its model comes when combat ends or on the next swap.
+- A new unit's model shows only once it has really loaded, and the portrait's own alpha changes are kept.
+- Closed windows no longer reload their model; the help texts say which portraits each switch covers.
+- The Options page button no longer errors in combat.
+
 # 1.0.4
 
 - Renamed to Forever 3D Portraits. The folder and /ff stay the same, so your settings stay too.

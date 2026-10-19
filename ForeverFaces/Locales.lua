@@ -11,9 +11,9 @@ local L = {
 
 	SHOW_ON = "3D portraits on",
 	UNITS = "Player, target, focus and pet",
-	UNITS_HELP = "Your own frame, your target, focus, pet and the target of your target.",
+	UNITS_HELP = "Your own frame, your target, focus, pet and the target of your target, the portraits in the Character, Inspect, Dressing Room and PvP windows and yours in the Trade window.",
 	PARTY = "Party frames",
-	PARTY_HELP = "The portraits of your party members.",
+	PARTY_HELP = "The portraits of your party members, also in the ready check.",
 	NPC = "NPC windows",
 	NPC_HELP = "Quest givers, gossip, merchants, trainers, the bank, auction house, stable, tabard and guild windows, and your trade partner.",
 	BACKGROUND = "Dark background",

@@ -34,7 +34,7 @@ local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
 local DARK = { 0.04, 0.04, 0.06, 1 }
 local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
 
-local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, dirty, shown, hiding, tinted }
+local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, dirty, loaded, checking, loadTime, shown, hiding, tinted, blocked, w, h }
 local Swapped -- defined with the events below
 local pending = {} -- [texture] = true, waiting for combat to end
 local hooked = {}
@@ -89,6 +89,16 @@ local function Wanted(texture, e)
 	return UnitExists(e.unit) and UnitIsVisible(e.unit) and not e.tinted
 end
 
+-- The game keeps some units' identity from addons (SetUnit then fails); a
+-- secret answer counts as hidden.
+local function Hidden(unit)
+	local fn = C_Secrets and C_Secrets.ShouldUnitIdentityBeSecret
+	if not fn then return false end
+	local v = fn(unit)
+	if Secret(v) then return true end
+	return v and true or false
+end
+
 -- A unit frame (player, target, focus, pet, party ...) is a secure unit button
 -- that carries a "unit" attribute; its portrait sits one or two frames below
 -- it. Windows that also draw a unit's portrait (character, talents, inspect,
@@ -103,6 +113,8 @@ local function OnUnitFrame(texture)
 	return false
 end
 
+-- Only for the load check below: the model is cleared before a new unit, so
+-- a file ID is the new unit's.
 local function Loaded(model)
 	if not model.GetModelFileID then return true end
 	local id = model:GetModelFileID()
@@ -114,6 +126,8 @@ end
 local function Flat(texture)
 	local e = entries[texture]
 	if not e then return end
+	-- already flat: the game redraws some portraits every frame
+	if not e.shown and not (e.model and e.model:IsShown()) then return end
 	if e.model then
 		e.model:SetAlpha(0)
 		e.model:Hide()
@@ -216,7 +230,9 @@ local function Build(texture, e)
 	model:Hide()
 	model:SetScript("OnModelLoaded", function()
 		local entry = entries[texture]
-		if entry and Wanted(texture, entry) then Show3D(texture) end
+		if not entry then return end
+		entry.loaded = true
+		if Wanted(texture, entry) then Show3D(texture) end
 	end)
 	-- hidden (the target cleared, the frame closed): the unit may look different
 	-- by the time it is back, so its model is loaded again then
@@ -258,7 +274,7 @@ local function Build(texture, e)
 	e.model, e.back, e.cover, e.fade = model, back, cover, fade
 end
 
-local function Refresh(texture)
+local function Refresh(texture, force)
 	local e = entries[texture]
 	if not e then return end
 	if not Wanted(texture, e) then
@@ -277,26 +293,61 @@ local function Refresh(texture)
 		e.dirty = true
 	end
 
-	Layout(texture, e)
+	-- the target of target is redrawn every frame: nothing new, nothing to do
+	local w, h = texture:GetSize()
+	local resized = w ~= e.w or h ~= e.h
+	if e.shown and not e.dirty and not force and not resized then return end
+
+	-- no model for a hidden identity: the picture stays until the next swap
+	-- or the end of combat
+	if e.dirty and (e.blocked or Hidden(e.unit)) then
+		pending[texture] = true
+		Flat(texture)
+		return
+	end
+
+	if force or resized then
+		e.w, e.h = w, h
+		Layout(texture, e)
+	end
 	local model = e.model
-	model:Show()
+	-- a new unit: nothing of the last one's model may show (cleared before
+	-- Show, which can fire OnModelLoaded)
+	local fresh = e.dirty and not e.shown
+	if fresh then model:ClearModel() end
+	if not model:IsShown() then model:Show() end
 	if e.dirty then
 		e.dirty = false
-		model:SetUnit(e.unit)
+		e.loaded = false
+		local ok, set = pcall(model.SetUnit, model, e.unit)
+		if not ok or (not Secret(set) and set == false) then
+			e.dirty, e.blocked = true, true
+			model:ClearModel()
+			pending[texture] = true
+			Flat(texture)
+			return
+		end
+		-- the game's update and our event may both ask for the same new unit
+		if fresh then e.loadTime = GetTime() end
 		model:SetPortraitZoom(1)
 		model:SetCamDistanceScale(e.camScale or 1)
 		model:SetPosition(0, 0, 0)
 	end
 
-	if Loaded(model) then
+	-- a model already on screen stays while the same unit loads again
+	if e.loaded or e.shown then
 		Show3D(texture)
-	elseif not e.shown then
-		-- keep the flat picture until the model is there
+	elseif not e.checking then
+		-- keep the flat picture until the model is there; one check at a time
+		e.checking = true
 		C_Timer.After(LOAD_CHECK, function()
 			local entry = entries[texture]
-			if entry and entry.model and Wanted(texture, entry) and Loaded(entry.model) then
-				Show3D(texture)
+			if not entry then return end
+			entry.checking = nil
+			if entry.model and not entry.loaded and not entry.dirty and Loaded(entry.model) then
+				entry.loaded = true
 			end
+			if entry.loaded and Wanted(texture, entry) then Show3D(texture) end
 		end)
 	end
 end
@@ -318,10 +369,13 @@ local function Hook(texture)
 	hooksecurefunc(texture, "SetTexture", Picture)
 	hooksecurefunc(texture, "SetAtlas", Picture)
 
-	-- the game sets the portrait's alpha now and then; keep it hidden under a model
-	hooksecurefunc(texture, "SetAlpha", function()
+	-- the game sets the portrait's alpha now and then; the flat picture gets it
+	-- back later, under a model the texture stays hidden
+	hooksecurefunc(texture, "SetAlpha", function(_, alpha)
 		local e = entries[texture]
-		if e and e.shown and not e.hiding then
+		if not e or e.hiding then return end
+		if not Secret(alpha) and type(alpha) == "number" then e.alpha = alpha end
+		if e.shown then
 			e.hiding = true
 			texture:SetAlpha(0)
 			e.hiding = false
@@ -390,7 +444,7 @@ local function OnPortrait(texture, unit)
 	if e.unit ~= unit or e.guid ~= guid then
 		Flat(texture)
 		e.unit, e.guid = unit, guid
-		e.dirty = true
+		e.dirty, e.blocked = true, nil
 	end
 	Refresh(texture)
 end
@@ -433,8 +487,15 @@ end
 
 -- settings change the look; a part switched off and on again loads its models anew
 function ns.ApplyAll()
-	for texture in pairs(entries) do
-		Refresh(texture)
+	for texture, e in pairs(entries) do
+		e.w = nil -- laid out again
+		if texture:IsVisible() then
+			Refresh(texture, true)
+		else
+			-- a closed window: the picture, and a new model once it is drawn again
+			Flat(texture)
+			e.dirty = true
+		end
 	end
 end
 
@@ -450,7 +511,8 @@ local function UnitChanged(unit, reload)
 	for texture, e in pairs(entries) do
 		if e.unit and Same(e.unit, unit) then
 			if reload then e.dirty = true end
-			Refresh(texture)
+			-- a closed window loads it when it is drawn again
+			if texture:IsVisible() then Refresh(texture) end
 		end
 	end
 end
@@ -459,9 +521,10 @@ end
 -- the flat picture first, then the new model.
 Swapped = function(pattern)
 	for texture, e in pairs(entries) do
-		if e.unit and e.guid == nil and e.unit:find(pattern) then
+		-- not when the game's own update for this event loaded it fresh already
+		if e.unit and e.guid == nil and e.unit:find(pattern) and e.loadTime ~= GetTime() then
 			Flat(texture)
-			e.dirty = true
+			e.dirty, e.blocked = true, nil
 			Refresh(texture)
 		end
 	end
@@ -523,8 +586,13 @@ function ns.InitPortraits()
 		elseif event == "GROUP_ROSTER_UPDATE" then
 			Swapped("^party")
 		elseif event == "PLAYER_REGEN_ENABLED" then
-			for texture in pairs(pending) do
-				pending[texture] = nil
+			-- a refresh may put a texture back on the list
+			local list = {}
+			for texture in pairs(pending) do list[#list + 1] = texture end
+			wipe(pending)
+			for _, texture in ipairs(list) do
+				local e = entries[texture]
+				if e then e.blocked = nil end
 				Refresh(texture)
 			end
 		else

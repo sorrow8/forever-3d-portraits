@@ -3,7 +3,7 @@
 ## Notes: Living 3D portraits for your unit frames, your party and the NPCs you talk to. Settings window: /ff
 ## Notes-ruRU: Живые 3D-портреты для рамок персонажа, цели, группы и NPC, с которыми говоришь. Окно настроек: /ff
 ## Author: sorrow8
-## Version: 1.0.4
+## Version: 1.0.5
 ## SavedVariables: ForeverFacesDB
 ## IconTexture: Interface\Icons\INV_Misc_Head_Human_01
 ## AddonCompartmentFunc: ForeverFaces_OnCompartmentClick
