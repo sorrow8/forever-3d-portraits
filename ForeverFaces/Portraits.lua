@@ -33,9 +33,12 @@ local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
 local DARK = { 0.04, 0.04, 0.06, 1 }
 local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
+local RETRIES = 3        -- load checks, and retries of a failed load out of combat
+local RETRY_DELAY = 1    -- seconds between those retries
 
 local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, dirty, loaded, checking, loadTime, shown, hiding, tinted, blocked, w, h }
 local Swapped -- defined with the events below
+local Idle -- a party model's own idle loop, defined before Build
 local pending = {} -- [texture] = true, waiting for combat to end
 local hooked = {}
 
@@ -215,6 +218,17 @@ local function Layout(texture, e)
 	Levels(texture, e)
 end
 
+-- A party member is often behind the camera, where the game doesn't animate
+-- them; a model tied to that (SetUnit's blend) stands still. Party models are
+-- loaded on their own and play the idle loop themselves.
+local function OwnAnimation(unit)
+	return unit and Category(unit) == "party"
+end
+
+Idle = function(e)
+	if e.model and OwnAnimation(e.unit) and e.model.SetAnimation then pcall(e.model.SetAnimation, e.model, 0) end
+end
+
 local function Build(texture, e)
 	local host = texture:GetParent()
 
@@ -232,14 +246,12 @@ local function Build(texture, e)
 		local entry = entries[texture]
 		if not entry then return end
 		entry.loaded = true
+		Idle(entry)
 		if Wanted(texture, entry) then Show3D(texture) end
 	end)
-	-- hidden (the target cleared, the frame closed): the unit may look different
-	-- by the time it is back, so its model is loaded again then
-	model:SetScript("OnHide", function()
-		local entry = entries[texture]
-		if entry then entry.dirty = true end
-	end)
+	-- hidden (a low-health tint, the frame closed) the model stays loaded, so it
+	-- comes back without a reload; a new unit or new looks still reload it
+	if model.SetKeepModelOnHide then model:SetKeepModelOnHide(true) end
 
 	-- above the model: fades its square edges into the dark disc
 	local cover = CreateFrame("Frame", nil, host)
@@ -303,6 +315,21 @@ local function Refresh(texture, force)
 	if e.dirty and (e.blocked or Hidden(e.unit)) then
 		pending[texture] = true
 		Flat(texture)
+		-- out of combat a failed load may just have come too early: try again
+		if e.blocked and not InCombatLockdown() and not e.retrying and (e.retries or 0) < RETRIES then
+			e.retrying = true
+			e.retries = (e.retries or 0) + 1
+			C_Timer.After(RETRY_DELAY, function()
+				local entry = entries[texture]
+				if not entry then return end
+				entry.retrying = nil
+				if entry.blocked and not InCombatLockdown() then
+					entry.blocked = nil
+					pending[texture] = nil
+					Refresh(texture)
+				end
+			end)
+		end
 		return
 	end
 
@@ -319,7 +346,7 @@ local function Refresh(texture, force)
 	if e.dirty then
 		e.dirty = false
 		e.loaded = false
-		local ok, set = pcall(model.SetUnit, model, e.unit)
+		local ok, set = pcall(model.SetUnit, model, e.unit, not OwnAnimation(e.unit))
 		if not ok or (not Secret(set) and set == false) then
 			e.dirty, e.blocked = true, true
 			model:ClearModel()
@@ -338,17 +365,26 @@ local function Refresh(texture, force)
 	if e.loaded or e.shown then
 		Show3D(texture)
 	elseif not e.checking then
-		-- keep the flat picture until the model is there; one check at a time
+		-- keep the flat picture until the model is there; one check at a time,
+		-- a few times over (a cached model may never say it loaded)
 		e.checking = true
-		C_Timer.After(LOAD_CHECK, function()
+		local tries = 0
+		local function Check()
 			local entry = entries[texture]
 			if not entry then return end
-			entry.checking = nil
+			tries = tries + 1
 			if entry.model and not entry.loaded and not entry.dirty and Loaded(entry.model) then
 				entry.loaded = true
+				Idle(entry)
 			end
+			if not entry.loaded and not entry.dirty and tries < RETRIES then
+				C_Timer.After(LOAD_CHECK * tries * 2, Check)
+				return
+			end
+			entry.checking = nil
 			if entry.loaded and Wanted(texture, entry) then Show3D(texture) end
-		end)
+		end
+		C_Timer.After(LOAD_CHECK, Check)
 	end
 end
 
@@ -443,8 +479,13 @@ local function OnPortrait(texture, unit)
 	if Secret(guid) then guid = nil end
 	if e.unit ~= unit or e.guid ~= guid then
 		Flat(texture)
-		e.unit, e.guid = unit, guid
-		e.dirty, e.blocked = true, nil
+		e.unit, e.guid, e.events = unit, guid, nil
+		e.dirty, e.blocked, e.retries = true, nil, nil
+	end
+	-- a party frame can draw its portrait before it is set up as a unit frame
+	if not e.framed and OnUnitFrame(texture) then
+		e.framed = true
+		e.w = nil -- laid out again as a unit frame
 	end
 	Refresh(texture)
 end
@@ -499,17 +540,34 @@ function ns.ApplyAll()
 	end
 end
 
--- new gear or shape: load the model again; a portrait update needs no reload
 local function Same(a, b)
 	if a == b then return true end
 	local same = UnitIsUnit(a, b)
 	return not Secret(same) and same and true or false
 end
 
+-- Unit events come for each token of a unit (target, party1, nameplate3 ...),
+-- so a portrait of such a token only needs its own; one with a token that
+-- gets no events (target of target, an NPC window) is compared.
+local EVENT_UNITS = { "^player$", "^target$", "^focus$", "^pet$", "^party%d$", "^partypet%d$", "^raid%d+$", "^boss%d$", "^arena%d$" }
+local function GetsEvents(unit)
+	for _, pattern in ipairs(EVENT_UNITS) do
+		if unit:find(pattern) then return true end
+	end
+	return false
+end
+local function Concerns(e, unit)
+	if e.unit == unit then return true end
+	if e.events == nil then e.events = GetsEvents(e.unit) end
+	return not e.events and Same(e.unit, unit)
+end
+
+-- new gear or shape: load the model again; a portrait update needs no reload
+
 local function UnitChanged(unit, reload)
 	if not unit then return end
 	for texture, e in pairs(entries) do
-		if e.unit and Same(e.unit, unit) then
+		if e.unit and Concerns(e, unit) then
 			if reload then e.dirty = true end
 			-- a closed window loads it when it is drawn again
 			if texture:IsVisible() then Refresh(texture) end
@@ -535,7 +593,7 @@ end
 local function StateChanged(unit)
 	if not unit then return end
 	for texture, e in pairs(entries) do
-		if e.unit and texture:IsVisible() and Same(e.unit, unit) then
+		if e.unit and Concerns(e, unit) and texture:IsVisible() then
 			local tinted = e.gameTint or Tinted(e.unit)
 			if tinted ~= e.tinted then
 				e.tinted = tinted
