@@ -1,3 +1,10 @@
+# 1.0.6
+
+- Party portraits play their own idle animation, apart from the character in the world.
+- A low-health tint no longer reloads the model.
+- A model that fails to load out of combat is tried again.
+- The Options button no longer closes the game's Options.
+
 # 1.0.5
 
 - The minimap button stays where a minimap button collector (like Leatrix Plus) put it: it was put back on the minimap's edge at every fight.
