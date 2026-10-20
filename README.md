@@ -16,8 +16,6 @@ Forever 3D Portraits turns them into animated 3D portraits: your own frame, your
 
 **Install:** unzip the `ForeverFaces` folder into `World of Warcraft/_forever_/Interface/AddOns/`. If the game is already running, type `/reload`.
 
-MIT license.
-
 ---
 
 **RU:** живые 3D-портреты для рамок персонажа, цели, группы и NPC, с которыми говоришь. Настройки: `/ff`.
