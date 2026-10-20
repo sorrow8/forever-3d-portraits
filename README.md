@@ -14,7 +14,7 @@ Forever 3D Portraits turns them into animated 3D portraits: your own frame, your
 - Minimap button
 - Settings: `/ff`
 
-**Install:** unzip the `ForeverFaces` folder into `World of Warcraft/_forever_/Interface/AddOns/` and `/reload` or restart the game.
+**Install:** unzip the `ForeverFaces` folder into `World of Warcraft/_forever_/Interface/AddOns/`. If the game is already running, type `/reload`.
 
 MIT license.
 
