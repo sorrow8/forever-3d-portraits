@@ -1,3 +1,7 @@
+# 1.0.8
+
+- A grey or coloured portrait (a mob tapped by someone else, a ghost, low health) no longer darkens the square corners outside the ring.
+
 # 1.0.7
 
 - Dead, ghost, offline and low-health units keep their 3D model, tinted like the game's picture: grey, blue or red, instead of switching to the flat picture.

@@ -99,8 +99,18 @@ local function ApplyTint(e)
 	e.tinted = e.desat or (e.unit and Tinted(e.unit)) or false
 	if e.model.SetDesaturation then e.model:SetDesaturation(e.tinted and 1 or 0) end
 	local r, g, b = e.r or 1, e.g or 1, e.b or 1
-	local colored = r < 0.99 or g < 0.99 or b < 0.99
-	if colored then e.tint:SetColorTexture(r, g, b) end
+	local lo, hi = math.min(r, g, b), math.max(r, g, b)
+	local colored = lo < 0.99
+	-- A multiplied (MOD) texture ignores its mask and would darken the whole
+	-- square behind the ring; a plain overlay keeps to the circle. Grey is
+	-- exact as black over the model, a colour is laid over it half-way.
+	if colored then
+		if hi - lo < 0.01 then
+			e.tint:SetColorTexture(0, 0, 0, 1 - lo)
+		else
+			e.tint:SetColorTexture(r, g, b, 0.55)
+		end
+	end
 	e.shade:SetShown(colored and e.shown)
 end
 
@@ -282,14 +292,13 @@ local function Build(texture, e)
 	fade:SetVertexColor(DARK[1], DARK[2], DARK[3], DARK[4])
 	cover:Hide()
 
-	-- on top: the game's colour tint (red low health, blue ghost) multiplied
-	-- over the model, as it is over the picture
+	-- on top: the game's colour tint (grey tapped, red low health, blue ghost)
+	-- laid over the model (see ApplyTint)
 	local shade = CreateFrame("Frame", nil, host)
 	shade:SetAllPoints(texture)
 	local tint = shade:CreateTexture(nil, "OVERLAY")
 	tint:SetAllPoints(texture)
-	tint:SetColorTexture(1, 1, 1)
-	tint:SetBlendMode("MOD")
+	tint:SetColorTexture(0, 0, 0, 0)
 	shade:Hide()
 
 	-- A window can keep its ring art in the portrait's own frame (the trade
