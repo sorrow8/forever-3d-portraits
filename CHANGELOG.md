@@ -1,3 +1,8 @@
+# 1.0.7
+
+- Dead, ghost, offline and low-health units keep their 3D model, tinted like the game's picture: grey, blue or red, instead of switching to the flat picture.
+- The trade window's other player gets a round portrait with its ring, not a square model over the frame.
+
 # 1.0.6
 
 - Party portraits play their own idle animation, apart from the character in the world.

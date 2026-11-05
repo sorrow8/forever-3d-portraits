@@ -8,7 +8,8 @@ Forever 3D Portraits turns them into animated 3D portraits: your own frame, your
 
 - 3D models inside the round frame, under the ring and the level badge
 - Party frames and NPC windows (quests, gossip, merchants, trainers, bank and more)
-- Falls back to the game's picture when a unit is dead, offline, out of sight or tinted by the game
+- Dead, ghost, offline and low-health units keep their 3D model with the game's grey, blue or red tint; the game's picture comes back only when a unit is out of sight
+- The trade window's other player gets a round 3D portrait too
 - Adjustable portrait size and dark background
 - English and Russian
 - Minimap button

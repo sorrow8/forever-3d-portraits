@@ -7,7 +7,9 @@ local ADDON, ns = ...
 --
 -- On Forever every portrait that matters is round: the unit frames, the party
 -- frames and the portrait of a quest, gossip, merchant or trainer window are
--- all masked to a circle and framed by ring art. Models can't be masked: a
+-- all masked to a circle and framed by ring art (the trade window's other
+-- player has a square texture, but the game's picture in it is round too,
+-- so it gets the same circle). Models can't be masked: a
 -- model is a square and would show a straight edge across the circle. So the
 -- model gets a dark disc behind it and a soft dark fade over its edges
 -- (textures, which can be masked to the circle). On a unit frame it is also
@@ -36,7 +38,7 @@ local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
 local RETRIES = 3        -- load checks, and retries of a failed load out of combat
 local RETRY_DELAY = 1    -- seconds between those retries
 
-local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, dirty, loaded, checking, loadTime, shown, hiding, tinted, blocked, w, h }
+local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, shade, tint, ring, desat, r, g, b, dirty, loaded, checking, loadTime, shown, hiding, tinted, blocked, w, h }
 local Swapped -- defined with the events below
 local Idle -- a party model's own idle loop, defined before Build
 local pending = {} -- [texture] = true, waiting for combat to end
@@ -56,8 +58,8 @@ local function Is(fn, unit)
 	return v and true or false
 end
 
--- The game tints the flat picture for these (grey, blue, desaturated); a
--- model would hide that, so the picture stays.
+-- States the model is shown grey for, like the game's own picture (dead,
+-- ghost, tapped, offline); a dead mob's picture the game leaves untinted.
 local function Tinted(unit)
 	return Is(UnitIsDeadOrGhost, unit) or Is(UnitIsTapDenied, unit)
 		or (Is(UnitIsPlayer, unit) and UnitIsConnected and not Is(UnitIsConnected, unit))
@@ -86,10 +88,20 @@ local function Wanted(texture, e)
 	if not db or not db.enabled or not e.unit then return false end
 	if not db[Category(e.unit)] then return false end
 	if not texture:IsShown() or not BigEnough(texture) then return false end
-	-- the game's own tint on the picture (grey dead, blue ghost, red low health,
-	-- desaturated offline) or a state the game leaves untinted (a dead mob)
-	e.tinted = e.gameTint or Tinted(e.unit)
-	return UnitExists(e.unit) and UnitIsVisible(e.unit) and not e.tinted
+	return UnitExists(e.unit) and UnitIsVisible(e.unit)
+end
+
+-- The game's tint on the picture (grey dead, blue ghost, red low health,
+-- desaturated offline) goes onto the model: grey as the model's desaturation,
+-- a colour multiplied over it.
+local function ApplyTint(e)
+	if not e.model then return end
+	e.tinted = e.desat or (e.unit and Tinted(e.unit)) or false
+	if e.model.SetDesaturation then e.model:SetDesaturation(e.tinted and 1 or 0) end
+	local r, g, b = e.r or 1, e.g or 1, e.b or 1
+	local colored = r < 0.99 or g < 0.99 or b < 0.99
+	if colored then e.tint:SetColorTexture(r, g, b) end
+	e.shade:SetShown(colored and e.shown)
 end
 
 -- The game keeps some units' identity from addons (SetUnit then fails); a
@@ -136,6 +148,8 @@ local function Flat(texture)
 		e.model:Hide()
 		e.back:Hide()
 		e.cover:Hide()
+		e.shade:Hide()
+		if e.ring then e.ring:Hide() end
 	end
 	e.shown = false
 	e.hiding = true
@@ -153,7 +167,9 @@ local function Show3D(texture)
 	e.model:SetAlpha(1)
 	e.back:SetShown(DB().background)
 	e.cover:SetShown(e.round and DB().background)
+	if e.ring then e.ring:Show() end
 	e.shown = true
+	ApplyTint(e)
 	e.hiding = true
 	texture:SetAlpha(0)
 	e.hiding = false
@@ -181,14 +197,18 @@ local function Levels(texture, e)
 		e.back:SetFrameStrata(below)
 		e.model:SetFrameStrata(below)
 		e.cover:SetFrameStrata(below)
+		e.shade:SetFrameStrata(below)
 		e.back:SetFrameLevel(1)
 		e.model:SetFrameLevel(2)
 		e.cover:SetFrameLevel(3)
+		e.shade:SetFrameLevel(4)
 		return
 	end
 	e.back:SetFrameLevel(level + 1)
 	e.model:SetFrameLevel(level + 2)
 	e.cover:SetFrameLevel(level + 3)
+	e.shade:SetFrameLevel(level + 4)
+	if e.ring then e.ring:SetFrameLevel(level + 5) end
 end
 
 local function Layout(texture, e)
@@ -262,10 +282,44 @@ local function Build(texture, e)
 	fade:SetVertexColor(DARK[1], DARK[2], DARK[3], DARK[4])
 	cover:Hide()
 
+	-- on top: the game's colour tint (red low health, blue ghost) multiplied
+	-- over the model, as it is over the picture
+	local shade = CreateFrame("Frame", nil, host)
+	shade:SetAllPoints(texture)
+	local tint = shade:CreateTexture(nil, "OVERLAY")
+	tint:SetAllPoints(texture)
+	tint:SetColorTexture(1, 1, 1)
+	tint:SetBlendMode("MOD")
+	shade:Hide()
+
+	-- A window can keep its ring art in the portrait's own frame (the trade
+	-- window's other player): our frames, children of that frame, would cover
+	-- it. A copy of that ring goes on top of the model.
+	local ring
+	if not e.framed then
+		local RANK = { BACKGROUND = 1, BORDER = 2, ARTWORK = 3, OVERLAY = 4, HIGHLIGHT = 5 }
+		local layer, sub = texture:GetDrawLayer()
+		local rank = (RANK[layer] or 0) * 100 + (sub or 0)
+		for _, r in ipairs({ host:GetRegions() }) do
+			if r ~= texture and r.IsObjectType and r:IsObjectType("Texture") and r.GetAtlas then
+				local atlas = r:GetAtlas()
+				local rl, rs = r:GetDrawLayer()
+				if atlas and atlas:find("Portrait") and (RANK[rl] or 0) * 100 + (rs or 0) > rank then
+					ring = ring or CreateFrame("Frame", nil, host)
+					local copy = ring:CreateTexture(nil, "OVERLAY")
+					copy:SetAtlas(atlas)
+					for i = 1, r:GetNumPoints() do copy:SetPoint(r:GetPoint(i)) end
+					copy:SetSize(r:GetSize())
+				end
+			end
+		end
+		if ring then ring:Hide() end
+	end
+
 	-- the same shape the game cuts the portrait with: its own mask, copied
 	if e.round then
 		local own = texture.GetMaskTexture and texture:GetMaskTexture(1)
-		for _, region in ipairs({ disc, fade }) do
+		for _, region in ipairs({ disc, fade, tint }) do
 			local mask = region:GetParent():CreateMaskTexture()
 			local atlas = own and own.GetAtlas and own:GetAtlas()
 			if atlas then
@@ -283,7 +337,7 @@ local function Build(texture, e)
 		end
 	end
 
-	e.model, e.back, e.cover, e.fade = model, back, cover, fade
+	e.model, e.back, e.cover, e.fade, e.shade, e.tint, e.ring = model, back, cover, fade, shade, tint, ring
 end
 
 local function Refresh(texture, force)
@@ -418,26 +472,24 @@ local function Hook(texture)
 		end
 	end)
 
-	-- the game tints the picture to show a state; the flat picture then shows it
+	-- the game tints the picture to show a state; the model is tinted the same
 	local function Tint()
 		local e = entries[texture]
 		-- only unit frames tint their portrait to show a state
 		if not e or not e.framed then return end
-		local tinted = false
+		e.desat = false
 		if texture.IsDesaturated then
 			local d = texture:IsDesaturated()
-			if not Secret(d) and d then tinted = true end
+			if not Secret(d) and d then e.desat = true end
 		end
-		if not tinted and texture.GetVertexColor then
+		e.r, e.g, e.b = 1, 1, 1
+		if texture.GetVertexColor then
 			local r, g, b = texture:GetVertexColor()
 			if not (Secret(r) or Secret(g) or Secret(b)) and r and g and b then
-				tinted = r < 0.99 or g < 0.99 or b < 0.99
+				e.r, e.g, e.b = r, g, b
 			end
 		end
-		if tinted ~= (e.gameTint or false) then
-			e.gameTint = tinted
-			Refresh(texture)
-		end
+		ApplyTint(e)
 	end
 	hooksecurefunc(texture, "SetVertexColor", Tint)
 	if texture.SetDesaturated then hooksecurefunc(texture, "SetDesaturated", Tint) end
@@ -464,7 +516,9 @@ local function OnPortrait(texture, unit)
 		if not BigEnough(texture) then return end
 		e = {
 			alpha = texture:GetAlpha(),
-			round = (texture.GetNumMaskTextures and texture:GetNumMaskTextures() or 0) > 0,
+			-- the game's picture is always round; a square texture with no mask of
+			-- its own (the trade window's other player) gets the plain circle
+			round = true,
 			framed = OnUnitFrame(texture),
 		}
 		entries[texture] = e
@@ -589,16 +643,12 @@ Swapped = function(pattern)
 end
 
 -- Died, released, came back, went offline, got tapped: only a change of that
--- look refreshes the portrait (health events come often).
+-- look retints the model (health events come often).
 local function StateChanged(unit)
 	if not unit then return end
 	for texture, e in pairs(entries) do
-		if e.unit and Concerns(e, unit) and texture:IsVisible() then
-			local tinted = e.gameTint or Tinted(e.unit)
-			if tinted ~= e.tinted then
-				e.tinted = tinted
-				Refresh(texture)
-			end
+		if e.unit and e.model and Concerns(e, unit) and texture:IsVisible() then
+			if (e.desat or Tinted(e.unit)) ~= e.tinted then ApplyTint(e) end
 		end
 	end
 end
