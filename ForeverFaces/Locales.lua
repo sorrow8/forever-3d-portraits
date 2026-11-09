@@ -24,8 +24,6 @@ local L = {
 	SIZE = "Portrait size",
 	SIZE_HELP = "How much of the round frame the model fills. Bigger shows more of the face, smaller leaves a wider soft edge.",
 	SIZE_PCT = "%d%%",
-	BARE_SIZE = "Size without background",
-	BARE_SIZE_HELP = "With the dark background off. Bigger hides the straight cut at the bottom of the portrait, smaller keeps big heads inside the ring.",
 
 	RESET = "Reset settings",
 	CMD_HINT = "Open this window:",

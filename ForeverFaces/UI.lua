@@ -377,8 +377,6 @@ local function Refresh()
 	widgets.size:SetNumber(ns.Size())
 	widgets.size:SetActive(enabled)
 	widgets.classColor:SetActive(enabled and db.background)
-	widgets.bareSize:SetNumber(ns.BareSize())
-	widgets.bareSize:SetActive(enabled and not db.background)
 end
 ns.RefreshUI = Refresh
 
@@ -468,12 +466,6 @@ local function Build()
 
 	-- limited to 70-85%: smaller looks lost in the ring, bigger lets the model's corners out of the ring
 	widgets.size, h = Slider(win, y, L.SIZE, L.SIZE_HELP, "size", 70, 85, function(v)
-		return L.SIZE_PCT:format(v)
-	end)
-	y = y - h - 14
-
-	-- only with the dark background off (see Layout in Portraits.lua)
-	widgets.bareSize, h = Slider(win, y, L.BARE_SIZE, L.BARE_SIZE_HELP, "bareSize", 80, 95, function(v)
 		return L.SIZE_PCT:format(v)
 	end)
 	y = y - h - 18

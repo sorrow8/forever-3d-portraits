@@ -2,7 +2,6 @@
 
 - The target's level is back in its circle: the game hid the circle after you targeted someone's pet and showed it again only on a /reload.
 - Thinner dark edge around the 3D face: it fades in over a much narrower band, so more of the face shows inside the ring.
-- New "Size without background" slider: with the dark background off, set how big the model is. Bigger hides the straight cut at the bottom, smaller keeps big heads inside the ring.
 - New "Background in unit colour" option: the background takes a dark shade of a player's class colour, or of an NPC's name colour (red hostile, yellow neutral, green friendly).
 
 # 1.0.8
