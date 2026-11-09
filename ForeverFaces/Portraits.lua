@@ -30,10 +30,12 @@ local SIZE_MIN, SIZE_MAX, SIZE_DEFAULT = 0.70, 0.85, 80 -- size of the face in a
 -- face is shown by bringing the camera closer, not by a bigger square. On a
 -- window's portrait, which has no ring over it, the square stays at SIZE_MIN.
 local SQUARE = 0.80
+local BARE_MIN, BARE_MAX, BARE_DEFAULT = 80, 95, 84 -- the square without the dark background (see Layout)
 local FADE_EDGE = 0.70  -- media/fade.tga is fully opaque from this share of its radius out
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local FADE = "Interface\\AddOns\\" .. ADDON .. "\\media\\fade"
 local DARK = { 0.04, 0.04, 0.06, 1 }
+local TINT_SHARE = 0.40 -- how much of the unit's colour the background takes (the rest stays DARK)
 local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
 local RETRIES = 3        -- load checks, and retries of a failed load out of combat
 local RETRY_DELAY = 1    -- seconds between those retries
@@ -78,6 +80,12 @@ function ns.Size()
 	return math.min(SIZE_MAX * 100, math.max(SIZE_MIN * 100, size))
 end
 
+-- the saved size of the square with the dark background off
+function ns.BareSize()
+	local size = tonumber(DB().bareSize) or BARE_DEFAULT
+	return math.min(BARE_MAX, math.max(BARE_MIN, size))
+end
+
 local function BigEnough(texture)
 	local w, h = texture:GetSize()
 	return w and h and math.min(w, h) >= MIN_SIZE
@@ -112,6 +120,28 @@ local function ApplyTint(e)
 		end
 	end
 	e.shade:SetShown(colored and e.shown)
+end
+
+-- The background's colour: dark, or (when the player asks for it) a dark shade
+-- of the unit's colour: a player's class colour, an NPC's the colour the game
+-- gives its name (red hostile, yellow neutral, green friendly). A secret
+-- answer stays dark.
+local function BackColor(unit)
+	local r, g, b = DARK[1], DARK[2], DARK[3]
+	if not (DB().classColor and unit) then return r, g, b end
+	local cr, cg, cb
+	if Is(UnitIsPlayer, unit) then
+		local class = UnitClassBase and UnitClassBase(unit)
+		-- a secret is checked before any test on it: testing one is an error
+		if Secret(class) then class = nil end
+		local color = class and (C_ClassColor and C_ClassColor.GetClassColor(class) or RAID_CLASS_COLORS[class])
+		if color then cr, cg, cb = color.r, color.g, color.b end
+	elseif UnitSelectionColor then
+		cr, cg, cb = UnitSelectionColor(unit)
+	end
+	if Secret(cr) or Secret(cg) or Secret(cb) or not (cr and cg and cb) then return r, g, b end
+	local s = TINT_SHARE
+	return r + (cr - r) * s, g + (cg - g) * s, b + (cb - b) * s
 end
 
 -- The game keeps some units' identity from addons (SetUnit then fails); a
@@ -176,6 +206,9 @@ local function Show3D(texture)
 	e.showing = false
 	e.model:SetAlpha(1)
 	e.back:SetShown(DB().background)
+	local r, g, b = BackColor(e.unit)
+	e.disc:SetColorTexture(r, g, b, 1)
+	e.fade:SetVertexColor(r, g, b, 1)
 	e.cover:SetShown(e.round and DB().background)
 	if e.ring then e.ring:Show() end
 	e.shown = true
@@ -232,6 +265,13 @@ local function Layout(texture, e)
 		if not e.framed then fill = SIZE_MIN end
 		-- the square stays inside the circle; the camera comes closer for a bigger face
 		local square = math.min(fill, e.framed and SQUARE or SIZE_MIN)
+		-- With no dark background the square's corners are see-through and only its
+		-- bottom edge shows, as a straight cut across the shoulders. A bigger square
+		-- with the camera further back keeps the face the same size and takes that
+		-- cut down under the ring art.
+		-- How big is a trade-off the player sets (ns.BareSize): bigger hides the cut,
+		-- smaller keeps the corners and a big head (a Tauren's horns) in the ring.
+		if e.framed and not DB().background then square = math.max(fill, ns.BareSize() / 100) end
 		e.camScale = square / fill
 		model:SetPoint("CENTER", texture, "CENTER")
 		model:SetSize(d * square, d * square)
@@ -346,7 +386,7 @@ local function Build(texture, e)
 		end
 	end
 
-	e.model, e.back, e.cover, e.fade, e.shade, e.tint, e.ring = model, back, cover, fade, shade, tint, ring
+	e.model, e.back, e.cover, e.fade, e.shade, e.tint, e.ring, e.disc = model, back, cover, fade, shade, tint, ring, disc
 end
 
 local function Refresh(texture, force)

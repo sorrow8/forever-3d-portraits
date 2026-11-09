@@ -13,7 +13,9 @@ local DEFAULTS = {
 	party = true,
 	npc = true,        -- quest, gossip, merchant and trainer windows
 	background = true, -- dark circle behind the model
+	classColor = false, -- that circle in a dark shade of the class (players) or reaction (NPCs) colour
 	size = 80,         -- model size in a round portrait, percent (70-85)
+	bareSize = 84,     -- the model's square with the dark background off, percent (80-95)
 	minimapShow = true,
 	minimapAngle = 180,
 }

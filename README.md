@@ -10,7 +10,7 @@ Forever 3D Portraits turns them into animated 3D portraits: your own frame, your
 - Party frames and NPC windows (quests, gossip, merchants, trainers, bank and more)
 - Dead, ghost, offline and low-health units keep their 3D model with the game's grey, blue or red tint; the game's picture comes back only when a unit is out of sight
 - The trade window's other player gets a round 3D portrait too
-- Adjustable portrait size and dark background
+- Adjustable portrait size; dark background or one in the unit's colour (class colour for players, name colour for NPCs)
 - English and Russian
 - Minimap button
 - Settings: `/ff`

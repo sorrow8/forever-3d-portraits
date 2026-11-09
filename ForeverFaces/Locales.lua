@@ -18,10 +18,14 @@ local L = {
 	NPC_HELP = "Quest givers, gossip, merchants, trainers, the bank, auction house, stable, tabard and guild windows, and your trade partner.",
 	BACKGROUND = "Dark background",
 	BACKGROUND_HELP = "A dark circle behind the model, so it stands out from the frame.",
+	CLASS_COLOR = "Background in unit colour",
+	CLASS_COLOR_HELP = "The background takes a dark shade of the player's class colour, or for an NPC the colour of its name: red hostile, yellow neutral, green friendly.",
 
 	SIZE = "Portrait size",
 	SIZE_HELP = "How much of the round frame the model fills. Bigger shows more of the face, smaller leaves a wider soft edge.",
 	SIZE_PCT = "%d%%",
+	BARE_SIZE = "Size without background",
+	BARE_SIZE_HELP = "With the dark background off. Bigger hides the straight cut at the bottom of the portrait, smaller keeps big heads inside the ring.",
 
 	RESET = "Reset settings",
 	CMD_HINT = "Open this window:",
