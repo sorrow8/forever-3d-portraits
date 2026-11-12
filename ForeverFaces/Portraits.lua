@@ -38,10 +38,12 @@ local TINT_SHARE = 0.40 -- how much of the unit's colour the background takes (t
 local LOAD_CHECK = 0.25 -- seconds; a cached model may never fire OnModelLoaded
 local RETRIES = 3        -- load checks, and retries of a failed load out of combat
 local RETRY_DELAY = 1    -- seconds between those retries
+local RECHECK = 0.5      -- seconds between looks at the portraits that stayed flat
+local RETRY_FLAT = 5     -- seconds between tries for one of them
 
 local entries = {} -- [texture] = { unit, guid, alpha, round, framed, model, back, cover, fade, shade, tint, ring, desat, r, g, b, dirty, loaded, checking, loadTime, shown, hiding, tinted, blocked, w, h }
 local Swapped -- defined with the events below
-local Idle -- a party model's own idle loop, defined before Build
+local Reload -- loads a portrait's unit again, defined after Refresh
 local pending = {} -- [texture] = true, waiting for combat to end
 local hooked = {}
 
@@ -176,6 +178,8 @@ local function Flat(texture)
 	if not e then return end
 	-- already flat: the game redraws some portraits every frame
 	if not e.shown and not (e.model and e.model:IsShown()) then return end
+	e.shown = false
+	e.away = nil
 	if e.model then
 		e.model:SetAlpha(0)
 		e.model:Hide()
@@ -184,7 +188,6 @@ local function Flat(texture)
 		e.shade:Hide()
 		if e.ring then e.ring:Hide() end
 	end
-	e.shown = false
 	e.hiding = true
 	texture:SetAlpha(e.alpha)
 	e.hiding = false
@@ -274,17 +277,6 @@ local function Layout(texture, e)
 	Levels(texture, e)
 end
 
--- A party member is often behind the camera, where the game doesn't animate
--- them; a model tied to that (SetUnit's blend) stands still. Party models are
--- loaded on their own and play the idle loop themselves.
-local function OwnAnimation(unit)
-	return unit and Category(unit) == "party"
-end
-
-Idle = function(e)
-	if e.model and OwnAnimation(e.unit) and e.model.SetAnimation then pcall(e.model.SetAnimation, e.model, 0) end
-end
-
 local function Build(texture, e)
 	local host = texture:GetParent()
 
@@ -302,12 +294,29 @@ local function Build(texture, e)
 		local entry = entries[texture]
 		if not entry then return end
 		entry.loaded = true
-		Idle(entry)
 		if Wanted(texture, entry) then Show3D(texture) end
 	end)
-	-- hidden (a low-health tint, the frame closed) the model stays loaded, so it
-	-- comes back without a reload; a new unit or new looks still reload it
+	-- Hidden with its frame (a party frame put away, the interface hidden) the
+	-- model stays loaded, so nothing comes back empty. Once it is on screen
+	-- again its unit is loaded anew, the way a new target's is: a model kept
+	-- through a hide is not known to go on moving.
 	if model.SetKeepModelOnHide then model:SetKeepModelOnHide(true) end
+	model:SetScript("OnHide", function()
+		local entry = entries[texture]
+		-- Flat hides it too, with shown already off
+		if entry and entry.shown then entry.away = true end
+	end)
+	model:SetScript("OnShow", function()
+		local entry = entries[texture]
+		if not (entry and entry.away) then return end
+		entry.away = nil
+		-- not if the game loads a unit into it in the meantime (a new target)
+		local loads = entry.loads
+		C_Timer.After(0, function()
+			local now = entries[texture]
+			if now and now.loads == loads then Reload(texture) end
+		end)
+	end)
 
 	-- above the model: fades its square edges into the dark disc
 	local cover = CreateFrame("Frame", nil, host)
@@ -435,7 +444,8 @@ local function Refresh(texture, force)
 	if e.dirty then
 		e.dirty = false
 		e.loaded = false
-		local ok, set = pcall(model.SetUnit, model, e.unit, not OwnAnimation(e.unit))
+		-- every unit the same way: the model plays its own idle, nothing is set on it
+		local ok, set = pcall(model.SetUnit, model, e.unit)
 		if not ok or (not Secret(set) and set == false) then
 			e.dirty, e.blocked = true, true
 			model:ClearModel()
@@ -445,6 +455,9 @@ local function Refresh(texture, force)
 		end
 		-- the game's update and our event may both ask for the same new unit
 		if fresh then e.loadTime = GetTime() end
+		e.loads, e.loadedAt = (e.loads or 0) + 1, GetTime()
+		-- a load under way is given its time before Recheck tries again
+		e.tried = e.loadedAt
 		model:SetPortraitZoom(1)
 		model:SetCamDistanceScale(e.camScale or 1)
 		model:SetPosition(0, 0, 0)
@@ -464,7 +477,6 @@ local function Refresh(texture, force)
 			tries = tries + 1
 			if entry.model and not entry.loaded and not entry.dirty and Loaded(entry.model) then
 				entry.loaded = true
-				Idle(entry)
 			end
 			if not entry.loaded and not entry.dirty and tries < RETRIES then
 				C_Timer.After(LOAD_CHECK * tries * 2, Check)
@@ -474,6 +486,38 @@ local function Refresh(texture, force)
 			if entry.loaded and Wanted(texture, entry) then Show3D(texture) end
 		end
 		C_Timer.After(LOAD_CHECK, Check)
+	end
+end
+
+Reload = function(texture)
+	local e = entries[texture]
+	if not e or not e.unit then return end
+	-- a hidden identity can't be loaded again: the model on screen stays
+	if e.shown and Hidden(e.unit) then return end
+	e.dirty = true
+	if texture:IsVisible() then Refresh(texture) end
+end
+
+-- A target is loaded afresh with every new target, so nothing wrong lasts on
+-- it. A party member's portrait lasts for hours: whatever left it flat (the
+-- member out of sight when the group formed, a load that failed or never
+-- reported) would stay, and the game redraws nothing when the member comes
+-- back into sight. So a portrait on a unit frame that should show a model and
+-- doesn't is tried again.
+local function Recheck()
+	local now = GetTime()
+	local combat = InCombatLockdown()
+	for texture, e in pairs(entries) do
+		if e.unit and e.framed and not e.shown and not e.checking and not e.retrying
+			and now - (e.tried or 0) >= RETRY_FLAT and texture:IsVisible() and Wanted(texture, e) then
+			e.tried = now
+			-- in combat a failed load waits for its end
+			if not (combat and (e.blocked or pending[texture])) then
+				if not combat then e.blocked, e.retries = nil, nil end
+				e.dirty = true
+				Refresh(texture)
+			end
+		end
 	end
 end
 
@@ -609,6 +653,11 @@ function ns.Debug()
 			if e.model then
 				local mw = e.model:GetWidth()
 				ns.Print(("  ours: back %s, model %s (%.1f), cover %s"):format(lvl(e.back), lvl(e.model), mw, lvl(e.cover)))
+				local file = e.model.GetModelFileID and e.model:GetModelFileID()
+				if Secret(file) then file = "secret" end
+				ns.Print(("  state: loaded=%s dirty=%s blocked=%s loads=%d, last %.0fs ago, file %s, in sight %s"):format(
+					tostring(e.loaded), tostring(e.dirty), tostring(e.blocked), e.loads or 0,
+					e.loadedAt and (GetTime() - e.loadedAt) or -1, tostring(file), tostring(Is(UnitIsVisible, e.unit))))
 			end
 		end
 	end
@@ -712,7 +761,8 @@ function ns.InitPortraits()
 	watcher:RegisterEvent("UNIT_PORTRAIT_UPDATE")
 	watcher:RegisterEvent("PLAYER_REGEN_ENABLED")
 	for _, event in ipairs({ "UNIT_HEALTH", "UNIT_FLAGS", "UNIT_CONNECTION", "UNIT_FACTION",
-		"PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "UNIT_TARGET", "UNIT_PET", "GROUP_ROSTER_UPDATE" }) do
+		"PLAYER_TARGET_CHANGED", "PLAYER_FOCUS_CHANGED", "UNIT_TARGET", "UNIT_PET", "GROUP_ROSTER_UPDATE",
+		"PARTY_MEMBER_ENABLE" }) do
 		watcher:RegisterEvent(event)
 	end
 	watcher:SetScript("OnEvent", function(_, event, unit)
@@ -728,6 +778,11 @@ function ns.InitPortraits()
 			if unit == "player" then Swapped("^pet$") end
 		elseif event == "GROUP_ROSTER_UPDATE" then
 			Swapped("^party")
+		elseif event == "PARTY_MEMBER_ENABLE" then
+			-- a party member is back: a flat portrait of theirs is tried at the next look
+			for _, e in pairs(entries) do
+				if e.unit and (not unit or Concerns(e, unit)) then e.tried = nil end
+			end
 		elseif event == "PLAYER_REGEN_ENABLED" then
 			-- a refresh may put a texture back on the list
 			local list = {}
@@ -742,4 +797,5 @@ function ns.InitPortraits()
 			UnitChanged(unit, event == "UNIT_MODEL_CHANGED")
 		end
 	end)
+	C_Timer.NewTicker(RECHECK, Recheck)
 end

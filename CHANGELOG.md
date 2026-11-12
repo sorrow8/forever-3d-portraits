@@ -1,3 +1,10 @@
+# 1.0.10
+
+- Party portraits move the way the target's does. They were made to play one standing animation and stood still once it ended, so they looked like the flat picture.
+- A party portrait that stayed flat turns 3D by itself: when the member was out of sight as the group formed and has now come close, or when the model failed to load.
+- A model is loaded again when its frame comes back on screen.
+- /ff debug also prints each model's load state.
+
 # 1.0.9
 
 - The target's level is back in its circle: the game hid the circle after you targeted someone's pet and showed it again only on a /reload.
