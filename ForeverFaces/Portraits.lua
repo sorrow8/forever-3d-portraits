@@ -508,6 +508,15 @@ local function Recheck()
 	local now = GetTime()
 	local combat = InCombatLockdown()
 	for texture, e in pairs(entries) do
+		-- under a model the flat picture stays hidden, whatever gave it its alpha back
+		if e.shown then
+			local alpha = texture:GetAlpha()
+			if Secret(alpha) or alpha > 0 then
+				e.hiding = true
+				texture:SetAlpha(0)
+				e.hiding = false
+			end
+		end
 		if e.unit and e.framed and not e.shown and not e.checking and not e.retrying
 			and now - (e.tried or 0) >= RETRY_FLAT and texture:IsVisible() and Wanted(texture, e) then
 			e.tried = now
@@ -570,7 +579,25 @@ local function Hook(texture)
 		end
 		ApplyTint(e)
 	end
-	hooksecurefunc(texture, "SetVertexColor", Tint)
+	-- A colour can come with an alpha: the party frame resets its portrait with
+	-- SetVertexColor(1, 1, 1, 1) at every change of the member's health, which
+	-- shows the flat picture again, over the model (the target frame passes no
+	-- alpha). It is taken as the picture's alpha, and the picture hidden again.
+	hooksecurefunc(texture, "SetVertexColor", function(_, _, _, _, alpha)
+		Tint()
+		local e = entries[texture]
+		if not e or e.hiding then return end
+		-- a secret is checked before any test on it
+		if not Secret(alpha) then
+			if type(alpha) ~= "number" then return end
+			e.alpha = alpha
+		end
+		if e.shown then
+			e.hiding = true
+			texture:SetAlpha(0)
+			e.hiding = false
+		end
+	end)
 	if texture.SetDesaturated then hooksecurefunc(texture, "SetDesaturated", Tint) end
 	if texture.SetDesaturation then hooksecurefunc(texture, "SetDesaturation", Tint) end
 

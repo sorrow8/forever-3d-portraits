@@ -1,3 +1,7 @@
+# 1.0.11
+
+- Party portraits stay 3D in a fight. The game showed its flat picture again over the 3D face every time the member's health changed, so the portrait looked still until the model was loaded anew.
+
 # 1.0.10
 
 - Party portraits move the way the target's does. They were made to play one standing animation and stood still once it ended, so they looked like the flat picture.
